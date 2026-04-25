@@ -608,6 +608,85 @@ function flagReview(id, name) {
   alert(`${name} (${id}) flagged for field team review.`);
 }
 
+/* ── COMMUNITIES + SOURCES PANELS ───────────────── */
+function renderCommunitiesPanel(villages) {
+  const ACCESS_COLOR = {
+    'No piped water': '#dc2626',
+    'Seasonal shortages': '#b45309',
+    'Insufficient pressure': '#d97706'
+  };
+  document.getElementById('communities-count').textContent = `${villages.length} village${villages.length !== 1 ? 's' : ''}`;
+  document.getElementById('communities-grid').innerHTML = villages.map(v => {
+    const col = ACCESS_COLOR[v.access_status] ?? '#64748b';
+    return `
+    <div class="vill-card">
+      <div class="vill-card-top">
+        <div class="vill-name">${v.name}</div>
+        <span class="vill-county-badge">${v.county}</span>
+      </div>
+      <div class="vill-status-badge" style="color:${col};border-color:${col}20;background:${col}10">${v.access_status}</div>
+      <div class="vill-metrics">
+        <div class="vill-metric">
+          <div class="vill-metric-val">${v.population.toLocaleString()}</div>
+          <div class="vill-metric-lbl">residents</div>
+        </div>
+        <div class="vill-metric">
+          <div class="vill-metric-val">${v.water_need_m3_day}</div>
+          <div class="vill-metric-lbl">m³/day needed</div>
+        </div>
+        <div class="vill-metric">
+          <div class="vill-metric-val">${_allSprings.filter(s => s.linked_village_id === v.id).length}</div>
+          <div class="vill-metric-lbl">sources</div>
+        </div>
+      </div>
+      <button class="vill-select-btn" onclick="selectVillageById('${v.id}')">
+        <svg viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
+        View on map
+      </button>
+    </div>`;
+  }).join('');
+}
+
+function renderSourcesPanel(springs) {
+  document.getElementById('sources-count').textContent = `${springs.length} source${springs.length !== 1 ? 's' : ''}`;
+  document.getElementById('sources-grid').innerHTML = springs.map(sp => {
+    const col = TYPE_COLOR[sp.type] ?? '#2563eb';
+    const cc  = confColor(sp.confidence);
+    const statusLabel = STATUS_LABEL[sp.status] ?? sp.status;
+    return `
+    <div class="src-item-card" onclick="focusSource('${sp.id}')" title="View ${sp.name} on map">
+      <div class="src-item-top">
+        <div class="src-item-icon" style="background:${col}18;color:${col}">${TYPE_ICON[sp.type] ?? TYPE_ICON.spring}</div>
+        <div class="src-item-meta">
+          <div class="src-item-name">${sp.name}</div>
+          <div class="src-item-village">${sp.nearest_village} &middot; ${sp.type}</div>
+        </div>
+      </div>
+      <div class="src-item-stats">
+        <div class="src-item-stat">
+          <div class="src-item-stat-val">${sp.reserve}</div>
+          <div class="src-item-stat-lbl">m³/day</div>
+        </div>
+        <div class="src-item-stat">
+          <div class="src-item-stat-val" style="color:${cc}">${sp.confidence}%</div>
+          <div class="src-item-stat-lbl">confidence</div>
+        </div>
+        <div class="src-item-stat">
+          <div class="src-item-stat-val">${sp.elevation_m}m</div>
+          <div class="src-item-stat-lbl">elevation</div>
+        </div>
+      </div>
+      <span class="src-item-status sbadge sbadge-${sp.status}">${statusLabel}</span>
+    </div>`;
+  }).join('');
+}
+
+function focusSource(id) {
+  const sp = getSpringById(id);
+  if (!sp) return;
+  leafletMap.setView([sp.lat, sp.lon], 13, { animate: true });
+}
+
 /* ── INIT ────────────────────────────────────────── */
 async function init() {
   initMap();
@@ -623,6 +702,8 @@ async function init() {
   addVillageMarkers(_allVillages);
   addSourceMarkers(_allSprings);
   renderVillageSelectPanel();
+  renderCommunitiesPanel(_allVillages);
+  renderSourcesPanel(_allSprings);
   renderTable(_allSprings);
   renderAnalysis(_allSprings, _allVillages);
   initLocationSearch();
