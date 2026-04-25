@@ -820,6 +820,61 @@ function escapeHtml(s) {
   );
 }
 
+/* ── FULLSCREEN MAP TOGGLE ─────────────────────── */
+const _EXPAND_ICON = `<path d="M8 3H5a2 2 0 00-2 2v3m18 0V5a2 2 0 00-2-2h-3m0 18h3a2 2 0 002-2v-3M3 16v3a2 2 0 002 2h3"/>`;
+const _SHRINK_ICON = `<path d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7"/>`;
+
+function toggleMapExpand() {
+  const isFs = document.body.classList.toggle('map-fullscreen');
+  const btn  = document.getElementById('map-expand-btn');
+  const icon = document.getElementById('map-expand-icon');
+  if (icon) icon.innerHTML = isFs ? _SHRINK_ICON : _EXPAND_ICON;
+  if (btn) {
+    btn.title = isFs ? 'Exit fullscreen (Esc)' : 'Expand map';
+    btn.classList.toggle('map-expand-btn-fs', isFs);
+    // Show "Exit fullscreen" label next to the icon while in fullscreen
+    let label = btn.querySelector('.map-expand-label');
+    if (isFs && !label) {
+      label = document.createElement('span');
+      label.className = 'map-expand-label';
+      label.textContent = 'Exit fullscreen';
+      btn.appendChild(label);
+    } else if (!isFs && label) {
+      label.remove();
+    }
+  }
+
+  // Info-dock collapse toggle (chevron in bottom-right)
+  let dockToggle = document.getElementById('fs-info-dock-toggle');
+  if (isFs && !dockToggle) {
+    dockToggle = document.createElement('button');
+    dockToggle.id = 'fs-info-dock-toggle';
+    dockToggle.className = 'fs-info-dock-toggle';
+    dockToggle.title = 'Hide info';
+    dockToggle.innerHTML = `
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="6 9 12 15 18 9"/>
+      </svg>`;
+    dockToggle.onclick = () => {
+      const hidden = document.body.classList.toggle('fs-info-hidden');
+      dockToggle.title = hidden ? 'Show info' : 'Hide info';
+    };
+    document.body.appendChild(dockToggle);
+  } else if (!isFs) {
+    dockToggle?.remove();
+    document.body.classList.remove('fs-info-hidden');
+  }
+
+  setTimeout(() => leafletMap?.invalidateSize(), 380);
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && document.body.classList.contains('map-fullscreen')) {
+    toggleMapExpand();
+  }
+});
+
 /* ── INIT ──────────────────────────────────────── */
 async function init() {
   initMap();
