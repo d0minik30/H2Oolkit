@@ -1,16 +1,19 @@
 """
 Ranks water sources by how efficiently each could supply a given village.
 
-Efficiency score = weighted sum of four independent sub-scores:
+Efficiency score = weighted sum of scoring components:
 
-  topography     (35%) — is the source above the village? gravity feed is far
-                          cheaper and more reliable than pumping
-  distance       (25%) — shorter pipeline = lower cost + less head loss
-  reliability    (25%) — perennial river > seasonal stream > uncertain spring
-  cost_efficiency(15%) — normalised inverse of total infrastructure cost
+  spring_probability (20%) — satellite-derived probability of persistent water
+  topography         (30%) — is the source above the village? gravity feed is far
+                             cheaper and more reliable than pumping
+  distance           (20%) — shorter pipeline = lower cost + less head loss
+  reliability        (15%) — perennial river > seasonal stream > uncertain spring
+  cost_efficiency    (15%) — normalised inverse of total infrastructure cost
 
-Topography is the dominant factor because it determines the entire pumping
-requirement, which drives both capital cost and ongoing electricity cost.
+Spring probability is satellite-derived from NDVI, soil moisture, JRC water
+occurrence, topography, and distance to rivers. Topography is still dominant
+for cost calculation (pumping vs gravity), but satellite data now drives
+source discovery confidence.
 """
 
 import numpy as np
@@ -18,14 +21,18 @@ from .route_calculator import calculate_pipeline_route
 from .cost_estimator import estimate_infrastructure_cost
 
 _WEIGHTS = {
-    "topography":      0.35,
-    "distance":        0.25,
-    "reliability":     0.25,
-    "cost_efficiency": 0.15,
+    "spring_probability": 0.20,
+    "topography":         0.30,
+    "distance":           0.20,
+    "reliability":        0.15,
+    "cost_efficiency":    0.15,
 }
 
 # How intermittent sources are penalised on their reliability score
 _INTERMITTENT_PENALTY = 0.20
+
+# Small bonus applied to springs not found in the official EU-Hydro network
+_EU_HYDRO_UNLINKED_BONUS = 0.05
 
 
 def rank_water_sources(
@@ -37,12 +44,17 @@ def rank_water_sources(
     Score and rank every source against the given village.
 
     sources      : list from osm.search_all_water_sources(), each must have
-                   an `elevation` key (filled by elevation.py before this call)
+                   an `elevation` key (filled by elevation.py before this call).
+                   May also contain EU-Hydro sources merged in by analyzer.py.
+                   Each source may optionally carry:
+                       eu_hydro_linked  : bool | None
+                       eu_hydro_note    : str  | None
     village      : {lat, lon, elevation, population}
     weather_data : result from weather.get_historical_precipitation()
 
     Returns the same list sorted descending by efficiency_score, with
-    route, cost, scores, supply_method, rank, and recommendation added.
+    route, cost, scores, supply_method, discovery_priority, rank, and
+    recommendation added to every entry.
     """
     if not sources:
         return []
@@ -85,6 +97,8 @@ def rank_water_sources(
             source["reliability_base"],
             source.get("intermittent", False),
         )
+        # Spring probability score — comes from satellite data analysis
+        spring_prob_score = source.get("spring_probability", 0.5)
 
         enriched.append({
             **source,
@@ -94,30 +108,46 @@ def rank_water_sources(
             "estimated_daily_flow_liters": round(daily_flow, 1),
             "supply_method": _supply_method(route["elevation_difference_m"]),
             "scores": {
-                "topography":      round(topo_score, 3),
-                "distance":        round(dist_score, 3),
-                "reliability":     round(rel_score, 3),
-                "cost_efficiency": 0.0,  # filled after normalisation below
+                "spring_probability": round(spring_prob_score, 3),
+                "topography":         round(topo_score, 3),
+                "distance":           round(dist_score, 3),
+                "reliability":        round(rel_score, 3),
+                "cost_efficiency":    0.0,  # filled after normalisation below
             },
+            # Preserve EU-Hydro fields if present, default to None if absent
+            "eu_hydro_linked": source.get("eu_hydro_linked"),
+            "eu_hydro_note":   source.get("eu_hydro_note"),
         })
 
     # Cost efficiency is relative — normalise so the cheapest scores 1.0
     costs = [e["cost"]["total_cost_eur"] for e in enriched]
-    max_cost = max(costs) if costs else 1.0
-    min_cost = min(costs) if costs else 0.0
+    max_cost  = max(costs) if costs else 1.0
+    min_cost  = min(costs) if costs else 0.0
     cost_range = max(max_cost - min_cost, 1.0)
 
     for e in enriched:
         cost_score = 1.0 - (e["cost"]["total_cost_eur"] - min_cost) / cost_range
         e["scores"]["cost_efficiency"] = round(cost_score, 3)
 
-        e["efficiency_score"] = round(
-            _WEIGHTS["topography"]      * e["scores"]["topography"]
-            + _WEIGHTS["distance"]      * e["scores"]["distance"]
-            + _WEIGHTS["reliability"]   * e["scores"]["reliability"]
-            + _WEIGHTS["cost_efficiency"] * e["scores"]["cost_efficiency"],
-            3,
+        base_score = (
+            _WEIGHTS["spring_probability"] * e["scores"]["spring_probability"]
+            + _WEIGHTS["topography"]       * e["scores"]["topography"]
+            + _WEIGHTS["distance"]         * e["scores"]["distance"]
+            + _WEIGHTS["reliability"]      * e["scores"]["reliability"]
+            + _WEIGHTS["cost_efficiency"]  * e["scores"]["cost_efficiency"]
         )
+
+        # Boost springs that are NOT in the official EU-Hydro water network —
+        # these are undiscovered/informal sources worth surfacing to the user.
+        if e.get("eu_hydro_linked") is False:
+            base_score = min(1.0, base_score + _EU_HYDRO_UNLINKED_BONUS)
+            e["discovery_priority"] = "high"
+        elif e.get("eu_hydro_linked") is True:
+            e["discovery_priority"] = "low"      # already catalogued
+        else:
+            e["discovery_priority"] = "unknown"  # GEE unavailable or not checked
+
+        e["efficiency_score"] = round(base_score, 3)
 
     enriched.sort(key=lambda x: x["efficiency_score"], reverse=True)
 
@@ -138,8 +168,8 @@ def _topo_score(elevation_diff_m: float) -> float:
     Positive = source is above village = gravity feed possible.
     """
     if elevation_diff_m >= 50:
-        # Ideal gravity zone: good pressure, no pump needed
-        # Slightly reduce score above 200m because pressure-reduction valves add cost
+        # Ideal gravity zone: good pressure, no pump needed.
+        # Slightly reduce score above 200 m because pressure-reduction valves add cost.
         return float(np.clip(1.0 - max(elevation_diff_m - 200, 0) / 500, 0.80, 1.0))
     if elevation_diff_m >= 10:
         # Marginal gravity — enough head for slow gravity feed
@@ -237,6 +267,8 @@ def _source_recommendation(entry: dict, population: int) -> str:
     dist_km     = entry["route"]["terrain_adjusted_distance_km"]
     score       = entry["efficiency_score"]
     elev_diff   = entry["route"]["elevation_difference_m"]
+    discovery   = entry.get("discovery_priority", "unknown")
+    eu_note     = entry.get("eu_hydro_note", "")
 
     method_labels = {
         "gravity_feed":             "gravity-fed (no pump required)",
@@ -248,9 +280,15 @@ def _source_recommendation(entry: dict, population: int) -> str:
     method_text = method_labels.get(method, method)
 
     if feasibility == "insufficient_supply":
-        feasibility_note = f" Flow ({flow:,.0f} L/day) is insufficient for village demand alone — consider combining sources."
+        feasibility_note = (
+            f" Flow ({flow:,.0f} L/day) is insufficient for village demand alone"
+            " — consider combining sources."
+        )
     elif feasibility == "marginal":
-        feasibility_note = f" Flow ({flow:,.0f} L/day) covers partial demand — supplement with a second source."
+        feasibility_note = (
+            f" Flow ({flow:,.0f} L/day) covers partial demand"
+            " — supplement with a second source."
+        )
     else:
         feasibility_note = f" Estimated flow ({flow:,.0f} L/day) meets village demand."
 
@@ -261,8 +299,15 @@ def _source_recommendation(entry: dict, population: int) -> str:
         f" No PNRR eligibility — full cost {cost_eur:,.0f} EUR must be locally financed."
     )
 
+    # Discovery note for EU-Hydro unlinked springs
+    discovery_note = ""
+    if discovery == "high":
+        discovery_note = " ⚑ Undiscovered source — not in official EU-Hydro network; field survey recommended."
+    elif eu_note:
+        discovery_note = f" {eu_note}"
+
     return (
         f"Rank #{entry['rank']} (score {score:.2f}): {name} — {stype}, "
         f"{dist_km:.1f} km, {method_text}."
-        f"{feasibility_note}{finance_note}"
+        f"{feasibility_note}{finance_note}{discovery_note}"
     )

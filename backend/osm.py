@@ -190,6 +190,8 @@ def _parse_water_source(element: dict, ref_lat: float, ref_lon: float) -> dict |
         "estimated_daily_flow_liters": SOURCE_FLOW_ESTIMATES.get(source_type, 1_000),
         "reliability_base": SOURCE_RELIABILITY.get(source_type, 0.50),
         "tags": tags,
+        "eu_hydro_linked": None,   # filled by eu_hydro.annotate_osm_sources_with_eu_hydro()
+        "eu_hydro_note":   None,
     }
 
 

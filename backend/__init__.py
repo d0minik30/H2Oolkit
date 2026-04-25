@@ -12,7 +12,7 @@ from .frontend_adapter import (
     load_springs,
     get_spring_by_id,
     get_village_zones,
-    spring_to_satsellite_data,
+    spring_to_satellite_data,
     village_zone_to_dict,
 )
 

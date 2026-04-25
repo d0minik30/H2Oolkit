@@ -5,9 +5,10 @@ from .spring_detector import calculate_spring_probability
 from .osm import search_osm_springs, search_osm_villages, search_all_water_sources
 from .cost_estimator import estimate_infrastructure_cost
 from .water_reserve import estimate_water_reserve
-from .route_calculator import calculate_pipeline_route
+from .route_calculator import calculate_pipeline_route, haversine_m
 from .elevation import get_elevation, get_elevations_batch
 from .source_ranker import rank_water_sources
+from .eu_hydro import annotate_osm_sources_with_eu_hydro, find_unlinked_springs, get_gee_satellite_data
 
 
 def analyze_spring_location(
@@ -85,6 +86,7 @@ def analyze_spring_location(
         spring["confidence"], weather["confidence"], reserve["confidence"]
     )
     overall_recommendation = _master_recommendation(spring, cost, reserve, route)
+    feasibility_score = _calculate_feasibility_score(spring, reserve, route, cost, satellite_data)
 
     return {
         "location": {"lat": lat, "lon": lon, "elevation": satellite_data["elevation"]},
@@ -108,6 +110,7 @@ def analyze_spring_location(
         "cost": cost,
         "known_springs_nearby": known_springs[:5],
         "overall_confidence": round(overall_confidence, 2),
+        "feasibility_score": round(feasibility_score, 1),
         "recommendation": overall_recommendation,
     }
 
@@ -153,6 +156,74 @@ def _master_recommendation(spring: dict, cost: dict, reserve: dict, route: dict)
     )
 
 
+def _calculate_feasibility_score(
+    spring: dict, reserve: dict, route: dict, cost: dict, satellite_data: dict
+) -> float:
+    """
+    Calculate a feasibility score from 0 to 100 based on multiple factors.
+    Higher score indicates more feasible project.
+    """
+    # Distance score: closer is better (max 100 for <1km, decreases linearly)
+    dist_km = route["terrain_adjusted_distance_km"]
+    score_distance = max(0, 100 - (dist_km - 1) * 20) if dist_km > 1 else 100
+
+    # Slope score: lower slope is better for construction
+    slope_pct = route["slope_pct"]
+    score_slope = max(0, 100 - slope_pct * 2)
+
+    # Elevation score: above town level is best (gravity feed)
+    elev_diff = route["elevation_difference_m"]
+    if elev_diff > 0:
+        score_elev = 100
+    else:
+        # Below town: penalty based on how much lower
+        score_elev = max(0, 80 - abs(elev_diff) / 10 * 10)
+
+    # Flow capacity score: higher flow is better
+    flow_liters = reserve["daily_flow_liters"]
+    score_flow = min(100, flow_liters / 50)  # 5000 L/day = 100
+
+    # Debit estimation using satellite: approximate width from NDWI (wetness index)
+    # Higher NDWI suggests wider water body
+    ndwi = satellite_data.get("ndvi_wet", 0.5)  # Use wet NDVI as proxy
+    estimated_width_m = max(0.5, ndwi * 20)  # Rough estimate: NDWI 0.5 -> 10m width
+    # Average flow velocity ~0.5 m/s for streams, debit m3/s = width * depth * velocity
+    # Assume depth ~0.3m for small streams
+    estimated_debit_m3_day = estimated_width_m * 0.3 * 0.5 * 86400  # m3/day
+    score_debit = min(100, estimated_debit_m3_day / 100)  # 8640 m3/day = 100
+
+    # Materials/cost score: lower cost indicates simpler materials needed
+    total_cost = cost["total_cost_eur"]
+    score_materials = max(0, 100 - (total_cost / 200000) * 50)  # 400k EUR = 0
+
+    # Spring probability bonus
+    spring_prob = spring["spring_probability"]
+    score_spring = spring_prob * 100
+
+    # Weighted average
+    weights = {
+        "distance": 0.15,
+        "slope": 0.15,
+        "elevation": 0.20,
+        "flow": 0.15,
+        "debit": 0.10,
+        "materials": 0.10,
+        "spring": 0.15,
+    }
+
+    total_score = (
+        score_distance * weights["distance"] +
+        score_slope * weights["slope"] +
+        score_elev * weights["elevation"] +
+        score_flow * weights["flow"] +
+        score_debit * weights["debit"] +
+        score_materials * weights["materials"] +
+        score_spring * weights["spring"]
+    )
+
+    return min(100, max(0, total_score))
+
+
 def analyze_village_water_supply(
     village_lat: float,
     village_lon: float,
@@ -160,6 +231,7 @@ def analyze_village_water_supply(
     radius_m: int = 10_000,
     village_elevation: float | None = None,
     village_name: str = "Village",
+    include_feasibility: bool = True,
 ) -> dict:
     """
     Village-centric analysis: find every water source within radius_m,
@@ -186,8 +258,43 @@ def analyze_village_water_supply(
     # 2. Regional precipitation (single call — all sources in radius share it)
     weather = get_historical_precipitation(village_lat, village_lon, years=10)
 
-    # 3. Discover all water bodies
+    # 3. Discover all OSM water bodies
     sources = search_all_water_sources(village_lat, village_lon, radius_m=radius_m)
+
+    # 4. Annotate OSM sources with EU-Hydro linkage data
+    sources = annotate_osm_sources_with_eu_hydro(
+        sources,
+        lat=village_lat,
+        lon=village_lon,
+        radius_m=radius_m,
+    )
+
+    # 5. Fetch EU-Hydro spring sources not already present in OSM
+    eu_hydro_result = find_unlinked_springs(village_lat, village_lon, radius_m)
+    for sp in eu_hydro_result.get("unlinked", []):
+        already_present = any(
+            abs(s["lat"] - sp["lat"]) < 0.0001 and
+            abs(s["lon"] - sp["lon"]) < 0.0001
+            for s in sources
+        )
+        if not already_present:
+            sources.append({
+                "id": f"eu_hydro_{sp['eu_hydro_id']}",
+                "osm_type": "eu_hydro",
+                "lat": sp["lat"],
+                "lon": sp["lon"],
+                "elevation": None,
+                "name": sp["name"],
+                "source_type": "spring",
+                "distance_m": round(haversine_m(village_lat, village_lon, sp["lat"], sp["lon"]), 1),
+                "drinking_water": "unknown",
+                "intermittent": False,
+                "estimated_daily_flow_liters": 3_000,
+                "reliability_base": 0.75,
+                "eu_hydro_linked": False,
+                "eu_hydro_note": "Source from EU-Hydro database, not in OSM.",
+                "tags": sp.get("raw_properties", {}),
+            })
 
     if not sources:
         return {
@@ -204,14 +311,73 @@ def analyze_village_water_supply(
             ),
         }
 
-    # 4. Batch elevation lookup for all sources (one API call)
+    # 6. Batch elevation lookup for all sources (one API call)
     points = [{"lat": s["lat"], "lon": s["lon"]} for s in sources]
     elevations = get_elevations_batch(points)
     for source, elev in zip(sources, elevations):
         source["elevation"] = elev if elev else village_elevation
 
-    # 5. Rank by supply efficiency
+    # 7. Fetch GEE satellite data for each source and calculate spring probability
+    import logging
+    log_analyzer = logging.getLogger('h2oolkit')
+    for source in sources:
+        try:
+            log_analyzer.debug(f"Fetching satellite data for source: {source.get('name', 'unknown')}")
+            sat_data = get_gee_satellite_data(source["lat"], source["lon"])
+            
+            # Calculate spring probability based on satellite data
+            spring_prob = calculate_spring_probability(
+                ndvi_dry=sat_data["ndvi_dry"],
+                ndvi_wet=sat_data["ndvi_wet"],
+                soil_moisture_summer=sat_data["soil_moisture_summer"],
+                jrc_occurrence=sat_data["jrc_occurrence"],
+                slope_degrees=sat_data["slope_degrees"],
+                elevation=sat_data.get("elevation", source.get("elevation", village_elevation)),
+                distance_to_river_m=sat_data["distance_to_river_m"],
+            )
+            
+            # Store satellite data and spring analysis in source for frontend
+            source["satellite_data"] = sat_data
+            source["spring_analysis"] = spring_prob
+            source["spring_probability"] = spring_prob["spring_probability"]
+            source["gee_available"] = sat_data["available"]
+        except Exception as e:
+            log_analyzer.warning(f"Failed to fetch satellite data for {source.get('name')}: {e}")
+            # Use defaults and mark as unavailable
+            source["satellite_data"] = {
+                "ndvi_dry": 0.35,
+                "ndvi_wet": 0.50,
+                "soil_moisture_summer": 0.40,
+                "jrc_occurrence": 20.0,
+                "slope_degrees": 8.0,
+                "elevation": source.get("elevation", village_elevation),
+                "distance_to_river_m": 500.0,
+                "available": False,
+            }
+            source["spring_probability"] = 0.3
+            source["gee_available"] = False
+
+    # 8. Rank by supply efficiency (now includes spring probability component)
     ranked = rank_water_sources(sources, village, weather)
+
+    # Add feasibility score to each ranked source
+    for source in ranked:
+        # Estimate reserve for this source
+        reserve = estimate_water_reserve(
+            catchment_area_km2=source.get("satellite_data", {}).get("catchment_area_km2", 5.0),
+            annual_recharge_mm=weather["estimated_recharge_mm"],
+            precipitation_trend=weather["trend_mm_per_year"],
+            spring_probability=source.get("spring_probability", 0.5),
+        )
+        source["water_reserve"] = reserve
+        if include_feasibility:
+            source["feasibility_score"] = round(_calculate_feasibility_score(
+                source.get("spring_analysis", {"spring_probability": 0.5, "confidence": 0.5}),
+                reserve,
+                source["route"],
+                source["cost"],
+                source.get("satellite_data", {})
+            ), 1)
 
     best = ranked[0] if ranked else None
     alternatives = ranked[1:4]  # up to 3 alternatives shown
@@ -264,15 +430,15 @@ def _village_recommendation(
     if best is None:
         return "No water sources found — field survey required."
 
-    name     = best.get("name", "Best candidate")
-    stype    = best["source_type"]
-    method   = best["supply_method"]
-    dist_km  = best["route"]["terrain_adjusted_distance_km"]
-    cost_eur = best["cost"]["total_cost_eur"]
-    contrib  = best["cost"]["village_contribution_eur"]
-    flow     = best["estimated_daily_flow_liters"]
+    name      = best.get("name", "Best candidate")
+    stype     = best["source_type"]
+    method    = best["supply_method"]
+    dist_km   = best["route"]["terrain_adjusted_distance_km"]
+    cost_eur  = best["cost"]["total_cost_eur"]
+    contrib   = best["cost"]["village_contribution_eur"]
+    flow      = best["estimated_daily_flow_liters"]
     elev_diff = best["route"]["elevation_difference_m"]
-    pnrr     = best["cost"]["pnrr_eligible"]
+    pnrr      = best["cost"]["pnrr_eligible"]
 
     method_text = {
         "gravity_feed":             "gravity-fed — no pumping cost",
