@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(c:/Users/marcu/Documents/GitHub/H2Oolkit/venv/Scripts/python.exe -c \"import ast, sys; ast.parse\\(open\\('c:/Users/marcu/Documents/GitHub/H2Oolkit/extraction/extract_satellite.py'\\).read\\(\\)\\); print\\('extract_satellite.py: OK'\\)\")",
+      "Bash(c:/Users/marcu/Documents/GitHub/H2Oolkit/venv/Scripts/python.exe -c \"import ast, sys; ast.parse\\(open\\('c:/Users/marcu/Documents/GitHub/H2Oolkit/extraction/fetch_springs.py'\\).read\\(\\)\\); print\\('fetch_springs.py: OK'\\)\")"
+    ]
+  }
+}
