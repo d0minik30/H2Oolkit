@@ -1,10 +1,7 @@
 {
   "type": "FeatureCollection",
-  "name": "H2Oolkit Spring Sources",
-  "crs": {
-    "type": "name",
-    "properties": { "name": "urn:ogc:def:crs:OGC:1.3:CRS84" }
-  },
+  "name": "H2Oolkit Spring Sources & Village Zones",
+  "crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:OGC:1.3:CRS84" } },
   "metadata": {
     "source": "Copernicus Sentinel-1 SAR + Sentinel-2 MSI",
     "region": "Carpathian Arc — Romania",
@@ -12,124 +9,126 @@
     "coordinate_system": "WGS84"
   },
   "features": [
+
+    { "type": "Feature", "geometry": { "type": "Point", "coordinates": [26.89, 45.76] },
+      "properties": { "feature_type": "spring", "id": "SP-001", "elevation_m": 342, "geology_type": "limestone_karst", "drainage_basin": "Putna", "catchment_area_km2": 12.4, "nearest_village": "Nereju", "land_cover": "mixed_forest", "aquifer_depth_m": 18 } },
+
+    { "type": "Feature", "geometry": { "type": "Point", "coordinates": [26.35, 45.44] },
+      "properties": { "feature_type": "spring", "id": "SP-002", "elevation_m": 187, "geology_type": "alluvial_gravel", "drainage_basin": "Buzău", "catchment_area_km2": 28.7, "nearest_village": "Siriu", "land_cover": "riparian_shrub", "aquifer_depth_m": 8 } },
+
+    { "type": "Feature", "geometry": { "type": "Point", "coordinates": [25.47, 45.44] },
+      "properties": { "feature_type": "spring", "id": "SP-003", "elevation_m": 621, "geology_type": "crystalline_schist", "drainage_basin": "Prahova", "catchment_area_km2": 6.2, "nearest_village": "Sinaia", "land_cover": "coniferous_forest", "aquifer_depth_m": 34 } },
+
+    { "type": "Feature", "geometry": { "type": "Point", "coordinates": [26.12, 45.91] },
+      "properties": { "feature_type": "spring", "id": "SP-004", "elevation_m": 498, "geology_type": "volcanic_tuff", "drainage_basin": "Olt", "catchment_area_km2": 19.1, "nearest_village": "Bixad", "land_cover": "meadow_grassland", "aquifer_depth_m": 12 } },
+
+    { "type": "Feature", "geometry": { "type": "Point", "coordinates": [26.50, 46.28] },
+      "properties": { "feature_type": "spring", "id": "SP-005", "elevation_m": 754, "geology_type": "flysch_sandstone", "drainage_basin": "Trotuș", "catchment_area_km2": 4.8, "nearest_village": "Moinești", "land_cover": "alpine_pasture", "aquifer_depth_m": 47 } },
+
+    { "type": "Feature", "geometry": { "type": "Point", "coordinates": [25.93, 46.41] },
+      "properties": { "feature_type": "spring", "id": "SP-006", "elevation_m": 412, "geology_type": "limestone_karst", "drainage_basin": "Mureș", "catchment_area_km2": 31.5, "nearest_village": "Corund", "land_cover": "mixed_forest", "aquifer_depth_m": 9 } },
+
+    { "type": "Feature", "geometry": { "type": "Point", "coordinates": [25.09, 45.33] },
+      "properties": { "feature_type": "spring", "id": "SP-007", "elevation_m": 891, "geology_type": "granite_gneiss", "drainage_basin": "Dâmbovița", "catchment_area_km2": 8.3, "nearest_village": "Câmpulung", "land_cover": "subalpine_scrub", "aquifer_depth_m": 26 } },
+
+    { "type": "Feature", "geometry": { "type": "Point", "coordinates": [26.13, 45.97] },
+      "properties": { "feature_type": "spring", "id": "SP-008", "elevation_m": 445, "geology_type": "volcanic_tuff", "drainage_basin": "Olt", "catchment_area_km2": 14.2, "nearest_village": "Turia", "land_cover": "meadow_grassland", "aquifer_depth_m": 15 } },
+
+    { "type": "Feature", "geometry": { "type": "Point", "coordinates": [24.36, 47.65] },
+      "properties": { "feature_type": "spring", "id": "SP-009", "elevation_m": 560, "geology_type": "crystalline_schist", "drainage_basin": "Vișeu", "catchment_area_km2": 22.1, "nearest_village": "Vișeu de Sus", "land_cover": "coniferous_forest", "aquifer_depth_m": 11 } },
+
+    { "type": "Feature", "geometry": { "type": "Point", "coordinates": [25.21, 46.94] },
+      "properties": { "feature_type": "spring", "id": "SP-010", "elevation_m": 732, "geology_type": "limestone_karst", "drainage_basin": "Mureș", "catchment_area_km2": 38.4, "nearest_village": "Deda", "land_cover": "mixed_forest", "aquifer_depth_m": 7 } },
+
+    { "type": "Feature", "geometry": { "type": "Point", "coordinates": [22.87, 46.83] },
+      "properties": { "feature_type": "spring", "id": "SP-011", "elevation_m": 1124, "geology_type": "crystalline_schist", "drainage_basin": "Crișul Negru", "catchment_area_km2": 15.7, "nearest_village": "Huedin", "land_cover": "coniferous_forest", "aquifer_depth_m": 22 } },
+
+    { "type": "Feature", "geometry": { "type": "Point", "coordinates": [22.43, 46.49] },
+      "properties": { "feature_type": "spring", "id": "SP-012", "elevation_m": 895, "geology_type": "limestone_karst", "drainage_basin": "Crișul Negru", "catchment_area_km2": 27.3, "nearest_village": "Câmpani", "land_cover": "mixed_forest", "aquifer_depth_m": 14 } },
+
+    { "type": "Feature", "geometry": { "type": "Point", "coordinates": [25.50, 47.76] },
+      "properties": { "feature_type": "spring", "id": "SP-013", "elevation_m": 1038, "geology_type": "flysch_sandstone", "drainage_basin": "Moldova", "catchment_area_km2": 9.4, "nearest_village": "Moldovița", "land_cover": "coniferous_forest", "aquifer_depth_m": 29 } },
+
+    { "type": "Feature", "geometry": { "type": "Point", "coordinates": [25.77, 46.88] },
+      "properties": { "feature_type": "spring", "id": "SP-014", "elevation_m": 1267, "geology_type": "limestone_karst", "drainage_basin": "Bistrița", "catchment_area_km2": 18.6, "nearest_village": "Bicaz-Chei", "land_cover": "alpine_pasture", "aquifer_depth_m": 10 } },
+
+    { "type": "Feature", "geometry": { "type": "Point", "coordinates": [23.73, 45.67] },
+      "properties": { "feature_type": "spring", "id": "SP-015", "elevation_m": 1542, "geology_type": "granite_gneiss", "drainage_basin": "Cibin", "catchment_area_km2": 5.8, "nearest_village": "Rășinari", "land_cover": "subalpine_scrub", "aquifer_depth_m": 38 } },
+
     {
       "type": "Feature",
-      "geometry": {
-        "type": "Point",
-        "coordinates": [26.82, 45.71]
-      },
-      "properties": {
-        "id": "SP-001",
-        "elevation_m": 342,
-        "geology_type": "limestone_karst",
-        "drainage_basin": "Putna",
-        "catchment_area_km2": 12.4,
-        "nearest_village": "Nereju",
-        "land_cover": "mixed_forest",
-        "aquifer_depth_m": 18
-      }
+      "geometry": { "type": "Polygon", "coordinates": [[[26.787,45.669],[26.817,45.669],[26.817,45.693],[26.787,45.693],[26.787,45.669]]] },
+      "properties": { "feature_type": "village_zone", "village_name": "Nereju", "county": "Vrancea", "population": 1240, "water_need_m3_day": 62, "access_status": "No piped water", "linked_spring_id": "SP-001" }
     },
     {
       "type": "Feature",
-      "geometry": {
-        "type": "Point",
-        "coordinates": [26.41, 45.38]
-      },
-      "properties": {
-        "id": "SP-002",
-        "elevation_m": 187,
-        "geology_type": "alluvial_gravel",
-        "drainage_basin": "Buzău",
-        "catchment_area_km2": 28.7,
-        "nearest_village": "Siriu",
-        "land_cover": "riparian_shrub",
-        "aquifer_depth_m": 8
-      }
+      "geometry": { "type": "Polygon", "coordinates": [[[26.368,45.346],[26.398,45.346],[26.398,45.370],[26.368,45.370],[26.368,45.346]]] },
+      "properties": { "feature_type": "village_zone", "village_name": "Siriu", "county": "Buzău", "population": 680, "water_need_m3_day": 34, "access_status": "Seasonal shortages", "linked_spring_id": "SP-002" }
     },
     {
       "type": "Feature",
-      "geometry": {
-        "type": "Point",
-        "coordinates": [25.54, 45.42]
-      },
-      "properties": {
-        "id": "SP-003",
-        "elevation_m": 621,
-        "geology_type": "crystalline_schist",
-        "drainage_basin": "Prahova",
-        "catchment_area_km2": 6.2,
-        "nearest_village": "Sinaia",
-        "land_cover": "coniferous_forest",
-        "aquifer_depth_m": 34
-      }
+      "geometry": { "type": "Polygon", "coordinates": [[[25.524,45.407],[25.558,45.407],[25.558,45.433],[25.524,45.433],[25.524,45.407]]] },
+      "properties": { "feature_type": "village_zone", "village_name": "Brebu Nou", "county": "Prahova", "population": 920, "water_need_m3_day": 46, "access_status": "No piped water", "linked_spring_id": "SP-003" }
     },
     {
       "type": "Feature",
-      "geometry": {
-        "type": "Point",
-        "coordinates": [26.05, 45.86]
-      },
-      "properties": {
-        "id": "SP-004",
-        "elevation_m": 498,
-        "geology_type": "volcanic_tuff",
-        "drainage_basin": "Olt",
-        "catchment_area_km2": 19.1,
-        "nearest_village": "Bixad",
-        "land_cover": "meadow_grassland",
-        "aquifer_depth_m": 12
-      }
+      "geometry": { "type": "Polygon", "coordinates": [[[26.033,45.839],[26.069,45.839],[26.069,45.863],[26.033,45.863],[26.033,45.839]]] },
+      "properties": { "feature_type": "village_zone", "village_name": "Bixad", "county": "Covasna", "population": 1580, "water_need_m3_day": 79, "access_status": "Insufficient pressure", "linked_spring_id": "SP-004" }
     },
     {
       "type": "Feature",
-      "geometry": {
-        "type": "Point",
-        "coordinates": [26.63, 46.21]
-      },
-      "properties": {
-        "id": "SP-005",
-        "elevation_m": 754,
-        "geology_type": "flysch_sandstone",
-        "drainage_basin": "Trotuș",
-        "catchment_area_km2": 4.8,
-        "nearest_village": "Moinești",
-        "land_cover": "alpine_pasture",
-        "aquifer_depth_m": 47
-      }
+      "geometry": { "type": "Polygon", "coordinates": [[[26.610,46.198],[26.652,46.198],[26.652,46.224],[26.610,46.224],[26.610,46.198]]] },
+      "properties": { "feature_type": "village_zone", "village_name": "Moinești", "county": "Bacău", "population": 2100, "water_need_m3_day": 105, "access_status": "No piped water", "linked_spring_id": "SP-005" }
     },
     {
       "type": "Feature",
-      "geometry": {
-        "type": "Point",
-        "coordinates": [25.81, 46.37]
-      },
-      "properties": {
-        "id": "SP-006",
-        "elevation_m": 412,
-        "geology_type": "limestone_karst",
-        "drainage_basin": "Mureș",
-        "catchment_area_km2": 31.5,
-        "nearest_village": "Corund",
-        "land_cover": "mixed_forest",
-        "aquifer_depth_m": 9
-      }
+      "geometry": { "type": "Polygon", "coordinates": [[[25.795,46.354],[25.831,46.354],[25.831,46.380],[25.795,46.380],[25.795,46.354]]] },
+      "properties": { "feature_type": "village_zone", "village_name": "Corund", "county": "Harghita", "population": 1100, "water_need_m3_day": 55, "access_status": "Seasonal shortages", "linked_spring_id": "SP-006" }
     },
     {
       "type": "Feature",
-      "geometry": {
-        "type": "Point",
-        "coordinates": [25.22, 45.28]
-      },
-      "properties": {
-        "id": "SP-007",
-        "elevation_m": 891,
-        "geology_type": "granite_gneiss",
-        "drainage_basin": "Dâmbovița",
-        "catchment_area_km2": 8.3,
-        "nearest_village": "Câmpulung",
-        "land_cover": "subalpine_scrub",
-        "aquifer_depth_m": 26
-      }
+      "geometry": { "type": "Polygon", "coordinates": [[[25.198,45.256],[25.242,45.256],[25.242,45.281],[25.198,45.281],[25.198,45.256]]] },
+      "properties": { "feature_type": "village_zone", "village_name": "Dragoslavele", "county": "Dâmbovița", "population": 780, "water_need_m3_day": 39, "access_status": "No piped water", "linked_spring_id": "SP-007" }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Polygon", "coordinates": [[[26.003,45.918],[26.039,45.918],[26.039,45.942],[26.003,45.942],[26.003,45.918]]] },
+      "properties": { "feature_type": "village_zone", "village_name": "Turia", "county": "Covasna", "population": 860, "water_need_m3_day": 43, "access_status": "Insufficient pressure", "linked_spring_id": "SP-008" }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Polygon", "coordinates": [[[24.408,47.706],[24.452,47.706],[24.452,47.734],[24.408,47.734],[24.408,47.706]]] },
+      "properties": { "feature_type": "village_zone", "village_name": "Vișeu de Sus", "county": "Maramureș", "population": 1920, "water_need_m3_day": 96, "access_status": "Seasonal shortages", "linked_spring_id": "SP-009" }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Polygon", "coordinates": [[[25.090,46.866],[25.132,46.866],[25.132,46.894],[25.090,46.894],[25.090,46.866]]] },
+      "properties": { "feature_type": "village_zone", "village_name": "Deda", "county": "Mureș", "population": 1440, "water_need_m3_day": 72, "access_status": "No piped water", "linked_spring_id": "SP-010" }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Polygon", "coordinates": [[[22.929,46.868],[22.963,46.868],[22.963,46.886],[22.929,46.886],[22.929,46.868]]] },
+      "properties": { "feature_type": "village_zone", "village_name": "Huedin", "county": "Cluj", "population": 1680, "water_need_m3_day": 84, "access_status": "Seasonal shortages", "linked_spring_id": "SP-011" }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Polygon", "coordinates": [[[22.533,46.391],[22.567,46.391],[22.567,46.409],[22.533,46.409],[22.533,46.391]]] },
+      "properties": { "feature_type": "village_zone", "village_name": "Câmpani", "county": "Bihor", "population": 970, "water_need_m3_day": 49, "access_status": "No piped water", "linked_spring_id": "SP-012" }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Polygon", "coordinates": [[[25.523,47.651],[25.557,47.651],[25.557,47.669],[25.523,47.669],[25.523,47.651]]] },
+      "properties": { "feature_type": "village_zone", "village_name": "Moldovița", "county": "Suceava", "population": 1130, "water_need_m3_day": 57, "access_status": "Insufficient pressure", "linked_spring_id": "SP-013" }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Polygon", "coordinates": [[[25.853,46.801],[25.887,46.801],[25.887,46.819],[25.853,46.819],[25.853,46.801]]] },
+      "properties": { "feature_type": "village_zone", "village_name": "Bicaz-Chei", "county": "Neamț", "population": 890, "water_need_m3_day": 45, "access_status": "No piped water", "linked_spring_id": "SP-014" }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Polygon", "coordinates": [[[23.863,45.561],[23.897,45.561],[23.897,45.579],[23.863,45.579],[23.863,45.561]]] },
+      "properties": { "feature_type": "village_zone", "village_name": "Rășinari", "county": "Sibiu", "population": 1350, "water_need_m3_day": 68, "access_status": "Seasonal shortages", "linked_spring_id": "SP-015" }
     }
   ]
 }

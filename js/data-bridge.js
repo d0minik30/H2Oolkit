@@ -1,13 +1,13 @@
 /**
  * data-bridge.js
- * Loads springs.json (sensor attributes) and springs.geojson (geometry + geology),
- * merges them by matching `id`, and exposes a unified springs array.
+ * Loads springs.json + springs.geojson, merges by id.
+ * Separates village_zone polygon features from spring point features.
  *
- * NOTE: fetch() requires an HTTP server.
- * Run: npx serve . OR python -m http.server 8000
+ * NOTE: fetch() requires HTTP. Run: npx serve . OR python -m http.server 8000
  */
 
-let _springs = [];
+let _springs      = [];
+let _villageZones = [];
 
 async function loadSprings() {
   try {
@@ -22,8 +22,11 @@ async function loadSprings() {
     const attributes = await attrRes.json();
     const geojson    = await geoRes.json();
 
+    const springFeatures = geojson.features.filter(f => f.properties.feature_type !== 'village_zone');
+    _villageZones        = geojson.features.filter(f => f.properties.feature_type === 'village_zone');
+
     const geoIndex = {};
-    for (const feature of geojson.features) {
+    for (const feature of springFeatures) {
       geoIndex[feature.properties.id] = {
         lat: feature.geometry.coordinates[1],
         lon: feature.geometry.coordinates[0],
@@ -40,11 +43,15 @@ async function loadSprings() {
 
   } catch (err) {
     console.warn('[data-bridge] Failed to load data files:', err.message);
-    console.warn('[data-bridge] Make sure the app is served via HTTP, not file://');
+    console.warn('[data-bridge] Serve via HTTP: npx serve .');
     return [];
   }
 }
 
 function getSpringById(id) {
   return _springs.find(s => s.id === id) ?? null;
+}
+
+function getVillageZones() {
+  return _villageZones;
 }

@@ -1,121 +1,77 @@
 [
   {
-    "id": "SP-001",
-    "name": "Izvorul Rece",
-    "region": "Vrancea",
-    "reserve": 285,
-    "confidence": 91,
-    "distance_km": 3.2,
-    "cost_eur": 142000,
-    "status": "verified",
-    "satellite": {
-      "sentinel1_sar_anomaly": 0.73,
-      "sentinel2_ndwi": 0.42,
-      "dem_slope_deg": 8.2,
-      "last_pass_utc": "2026-04-22T03:14:00Z",
-      "orbit_direction": "ascending"
-    }
+    "id": "SP-001", "name": "Izvorul Rece",      "region": "Vrancea",
+    "reserve": 285, "confidence": 91, "distance_km": 3.2, "cost_eur": 142000, "status": "verified",
+    "satellite": { "sentinel1_sar_anomaly": 0.73, "sentinel2_ndwi": 0.42, "dem_slope_deg": 8.2,  "last_pass_utc": "2026-04-22T03:14:00Z", "orbit_direction": "ascending" }
   },
   {
-    "id": "SP-002",
-    "name": "Izvorul Mare",
-    "region": "Buzău",
-    "reserve": 420,
-    "confidence": 87,
-    "distance_km": 1.8,
-    "cost_eur": 98000,
-    "status": "high_priority",
-    "satellite": {
-      "sentinel1_sar_anomaly": 0.89,
-      "sentinel2_ndwi": 0.61,
-      "dem_slope_deg": 5.4,
-      "last_pass_utc": "2026-04-23T01:47:00Z",
-      "orbit_direction": "descending"
-    }
+    "id": "SP-002", "name": "Izvorul Mare",       "region": "Buzău",
+    "reserve": 420, "confidence": 87, "distance_km": 1.8, "cost_eur": 98000,  "status": "high_priority",
+    "satellite": { "sentinel1_sar_anomaly": 0.89, "sentinel2_ndwi": 0.61, "dem_slope_deg": 5.4,  "last_pass_utc": "2026-04-23T01:47:00Z", "orbit_direction": "descending" }
   },
   {
-    "id": "SP-003",
-    "name": "Fântâna Bradului",
-    "region": "Prahova",
-    "reserve": 190,
-    "confidence": 78,
-    "distance_km": 5.1,
-    "cost_eur": 231000,
-    "status": "pending",
-    "satellite": {
-      "sentinel1_sar_anomaly": 0.54,
-      "sentinel2_ndwi": 0.29,
-      "dem_slope_deg": 14.7,
-      "last_pass_utc": "2026-04-21T22:58:00Z",
-      "orbit_direction": "ascending"
-    }
+    "id": "SP-003", "name": "Fântâna Bradului",   "region": "Prahova",
+    "reserve": 190, "confidence": 78, "distance_km": 5.1, "cost_eur": 231000, "status": "pending",
+    "satellite": { "sentinel1_sar_anomaly": 0.54, "sentinel2_ndwi": 0.29, "dem_slope_deg": 14.7, "last_pass_utc": "2026-04-21T22:58:00Z", "orbit_direction": "ascending" }
   },
   {
-    "id": "SP-004",
-    "name": "Izvorul Negru",
-    "region": "Covasna",
-    "reserve": 510,
-    "confidence": 94,
-    "distance_km": 2.4,
-    "cost_eur": 87000,
-    "status": "verified",
-    "satellite": {
-      "sentinel1_sar_anomaly": 0.91,
-      "sentinel2_ndwi": 0.67,
-      "dem_slope_deg": 6.1,
-      "last_pass_utc": "2026-04-24T00:33:00Z",
-      "orbit_direction": "ascending"
-    }
+    "id": "SP-004", "name": "Izvorul Negru",      "region": "Covasna",
+    "reserve": 510, "confidence": 94, "distance_km": 2.4, "cost_eur": 87000,  "status": "verified",
+    "satellite": { "sentinel1_sar_anomaly": 0.91, "sentinel2_ndwi": 0.67, "dem_slope_deg": 6.1,  "last_pass_utc": "2026-04-24T00:33:00Z", "orbit_direction": "ascending" }
   },
   {
-    "id": "SP-005",
-    "name": "Pârâul Sec",
-    "region": "Bacău",
-    "reserve": 155,
-    "confidence": 72,
-    "distance_km": 6.7,
-    "cost_eur": 318000,
-    "status": "pending",
-    "satellite": {
-      "sentinel1_sar_anomaly": 0.41,
-      "sentinel2_ndwi": 0.18,
-      "dem_slope_deg": 19.3,
-      "last_pass_utc": "2026-04-20T04:02:00Z",
-      "orbit_direction": "descending"
-    }
+    "id": "SP-005", "name": "Pârâul Sec",         "region": "Bacău",
+    "reserve": 155, "confidence": 72, "distance_km": 6.7, "cost_eur": 318000, "status": "pending",
+    "satellite": { "sentinel1_sar_anomaly": 0.41, "sentinel2_ndwi": 0.18, "dem_slope_deg": 19.3, "last_pass_utc": "2026-04-20T04:02:00Z", "orbit_direction": "descending" }
   },
   {
-    "id": "SP-006",
-    "name": "Izvorul Alb",
-    "region": "Harghita",
-    "reserve": 640,
-    "confidence": 96,
-    "distance_km": 1.1,
-    "cost_eur": 71000,
-    "status": "verified",
-    "satellite": {
-      "sentinel1_sar_anomaly": 0.95,
-      "sentinel2_ndwi": 0.74,
-      "dem_slope_deg": 3.8,
-      "last_pass_utc": "2026-04-24T02:19:00Z",
-      "orbit_direction": "ascending"
-    }
+    "id": "SP-006", "name": "Izvorul Alb",        "region": "Harghita",
+    "reserve": 640, "confidence": 96, "distance_km": 1.1, "cost_eur": 71000,  "status": "verified",
+    "satellite": { "sentinel1_sar_anomaly": 0.95, "sentinel2_ndwi": 0.74, "dem_slope_deg": 3.8,  "last_pass_utc": "2026-04-24T02:19:00Z", "orbit_direction": "ascending" }
   },
   {
-    "id": "SP-007",
-    "name": "Vâlceaua Rece",
-    "region": "Dâmbovița",
-    "reserve": 230,
-    "confidence": 83,
-    "distance_km": 4.3,
-    "cost_eur": 176000,
-    "status": "high_priority",
-    "satellite": {
-      "sentinel1_sar_anomaly": 0.68,
-      "sentinel2_ndwi": 0.37,
-      "dem_slope_deg": 11.5,
-      "last_pass_utc": "2026-04-22T23:41:00Z",
-      "orbit_direction": "descending"
-    }
+    "id": "SP-007", "name": "Vâlceaua Rece",      "region": "Dâmbovița",
+    "reserve": 230, "confidence": 83, "distance_km": 4.3, "cost_eur": 176000, "status": "high_priority",
+    "satellite": { "sentinel1_sar_anomaly": 0.68, "sentinel2_ndwi": 0.37, "dem_slope_deg": 11.5, "last_pass_utc": "2026-04-22T23:41:00Z", "orbit_direction": "descending" }
+  },
+  {
+    "id": "SP-008", "name": "Izvorul Turia",      "region": "Covasna",
+    "reserve": 375, "confidence": 88, "distance_km": 2.9, "cost_eur": 114000, "status": "verified",
+    "satellite": { "sentinel1_sar_anomaly": 0.82, "sentinel2_ndwi": 0.55, "dem_slope_deg": 7.3,  "last_pass_utc": "2026-04-23T04:05:00Z", "orbit_direction": "ascending" }
+  },
+  {
+    "id": "SP-009", "name": "Pârâul Vișeu",       "region": "Maramureș",
+    "reserve": 520, "confidence": 92, "distance_km": 1.6, "cost_eur": 82000,  "status": "verified",
+    "satellite": { "sentinel1_sar_anomaly": 0.93, "sentinel2_ndwi": 0.69, "dem_slope_deg": 4.9,  "last_pass_utc": "2026-04-24T01:12:00Z", "orbit_direction": "ascending" }
+  },
+  {
+    "id": "SP-010", "name": "Izvorul Călimanului","region": "Mureș",
+    "reserve": 610, "confidence": 95, "distance_km": 0.9, "cost_eur": 68000,  "status": "verified",
+    "satellite": { "sentinel1_sar_anomaly": 0.96, "sentinel2_ndwi": 0.77, "dem_slope_deg": 3.2,  "last_pass_utc": "2026-04-24T03:48:00Z", "orbit_direction": "descending" }
+  },
+  {
+    "id": "SP-011", "name": "Izvorul Vlădesei",   "region": "Cluj",
+    "reserve": 340, "confidence": 89, "distance_km": 2.8, "cost_eur": 108000, "status": "verified",
+    "satellite": { "sentinel1_sar_anomaly": 0.84, "sentinel2_ndwi": 0.57, "dem_slope_deg": 9.1,  "last_pass_utc": "2026-04-23T02:31:00Z", "orbit_direction": "ascending" }
+  },
+  {
+    "id": "SP-012", "name": "Fântâna Bihoreană",  "region": "Bihor",
+    "reserve": 480, "confidence": 93, "distance_km": 1.5, "cost_eur": 79000,  "status": "verified",
+    "satellite": { "sentinel1_sar_anomaly": 0.92, "sentinel2_ndwi": 0.71, "dem_slope_deg": 5.6,  "last_pass_utc": "2026-04-24T00:58:00Z", "orbit_direction": "descending" }
+  },
+  {
+    "id": "SP-013", "name": "Izvorul Bucovinei",  "region": "Suceava",
+    "reserve": 210, "confidence": 76, "distance_km": 4.6, "cost_eur": 198000, "status": "pending",
+    "satellite": { "sentinel1_sar_anomaly": 0.52, "sentinel2_ndwi": 0.31, "dem_slope_deg": 12.4, "last_pass_utc": "2026-04-21T04:17:00Z", "orbit_direction": "ascending" }
+  },
+  {
+    "id": "SP-014", "name": "Pârâul Hăghimaș",   "region": "Neamț",
+    "reserve": 565, "confidence": 91, "distance_km": 2.1, "cost_eur": 92000,  "status": "verified",
+    "satellite": { "sentinel1_sar_anomaly": 0.90, "sentinel2_ndwi": 0.66, "dem_slope_deg": 6.8,  "last_pass_utc": "2026-04-23T23:44:00Z", "orbit_direction": "ascending" }
+  },
+  {
+    "id": "SP-015", "name": "Izvorul Cindrelu",   "region": "Sibiu",
+    "reserve": 145, "confidence": 68, "distance_km": 7.2, "cost_eur": 285000, "status": "pending",
+    "satellite": { "sentinel1_sar_anomaly": 0.38, "sentinel2_ndwi": 0.22, "dem_slope_deg": 16.1, "last_pass_utc": "2026-04-20T01:39:00Z", "orbit_direction": "descending" }
   }
 ]
