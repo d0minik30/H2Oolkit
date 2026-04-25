@@ -161,6 +161,9 @@ body.map-fullscreen .map-expand-btn-fs svg { color: #fff; width: 14px; height: 1
 }
 body.map-fullscreen .map-body { height: 100vh; }
 
+/* Push Leaflet zoom + attribution controls clear of the floating header bar */
+body.map-fullscreen .leaflet-top.leaflet-left { top: 78px; }
+
 /* Floating info dock — bottom right (detail panel = main card) */
 body.map-fullscreen .detail-panel {
   position: fixed;
@@ -398,17 +401,16 @@ table.dtbl { width: 100%; border-collapse: collapse; font-size: .79rem; }
 }
 .footer-inner {
   display: grid;
-  grid-template-columns: 1.6fr 1.4fr 1.2fr 1.4fr;
+  grid-template-columns: 1.6fr 1.4fr 1.4fr;
   gap: 0;
   padding: 36px 36px 28px;
   max-width: 1700px;
   margin: 0 auto;
   border-bottom: 1px solid var(--border);
 }
-.footer-col { padding: 0 28px; }
+.footer-col { padding: 0 32px; }
 .footer-col:first-child { padding-left: 0; border-right: 1px solid var(--border); }
 .footer-col:nth-child(2) { border-right: 1px solid var(--border); }
-.footer-col:nth-child(3) { border-right: 1px solid var(--border); }
 .footer-col:last-child { padding-right: 0; }
 
 /* brand col */
