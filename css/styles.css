@@ -949,32 +949,42 @@ html.dark { --bg:#0f172a; --card:#1e293b; --border:#334155; --border-2:#475569; 
 }
 
 /* ── LANDING STATE ───────────────────────────────── */
-body.landing .page-header { display: none; }
+body.landing { overflow: hidden; }
+
+body.landing .navbar       { display: none; }
+body.landing .page-header  { display: none; }
+body.landing .below-map-grid { display: none; }
+body.landing .footer       { display: none; }
+body.landing .main         { padding: 0; max-width: 100%; margin: 0; width: 100%; }
 
 body.landing .split-layout {
   grid-template-columns: 1fr 0fr;
-  height: calc(100vh - 56px);
-  margin-bottom: 0;
+  height: 100vh;
+  margin: 0;
+  gap: 0;
 }
 
+body.landing .map-card {
+  border-radius: 0;
+  border: none;
+  box-shadow: none;
+}
 body.landing .map-header { display: none; }
+body.landing .map-body   { overflow: hidden; }
 
-body.landing .map-body { overflow: hidden; }
-
-#map {
-  transition: filter .55s ease, transform .55s ease;
-}
+#map { transition: filter .6s ease, transform .6s ease; }
 body.landing #map {
-  filter: blur(6px) brightness(0.62);
-  transform: scale(1.09);
+  filter: blur(7px) brightness(0.55);
+  transform: scale(1.1);
+  cursor: default !important;
 }
 
 body.landing .map-overlay-search {
   top: 50%;
   transform: translate(-50%, -50%);
-  width: min(520px, 88%);
+  width: min(540px, 88%);
 }
-body.landing .mos-input { height: 48px; font-size: .88rem; }
+body.landing .mos-input { height: 50px; font-size: .92rem; }
 
 body.landing .detail-panel { overflow: hidden; opacity: 0; padding: 0; }
 body:not(.landing) .detail-panel { opacity: 1; }

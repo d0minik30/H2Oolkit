@@ -98,6 +98,15 @@ function initMap() {
   };
   legend.addTo(leafletMap);
 
+  /* Locked until user searches */
+  leafletMap.dragging.disable();
+  leafletMap.touchZoom.disable();
+  leafletMap.doubleClickZoom.disable();
+  leafletMap.scrollWheelZoom.disable();
+  leafletMap.boxZoom.disable();
+  leafletMap.keyboard.disable();
+  leafletMap.zoomControl.getContainer().style.display = 'none';
+
   leafletMap.on('click', e => {
     if (appState !== 'point-select') return;
     enterAreaFocused(e.latlng.lat, e.latlng.lng, 10, selectedVillage);
@@ -120,7 +129,14 @@ function addVillageMarkers(villages) {
 function exitLandingMode() {
   if (!document.body.classList.contains('landing')) return;
   document.body.classList.remove('landing');
-  leafletMap.invalidateSize();
+  leafletMap.dragging.enable();
+  leafletMap.touchZoom.enable();
+  leafletMap.doubleClickZoom.enable();
+  leafletMap.scrollWheelZoom.enable();
+  leafletMap.boxZoom.enable();
+  leafletMap.keyboard.enable();
+  leafletMap.zoomControl.getContainer().style.display = '';
+  setTimeout(() => leafletMap.invalidateSize(), 50);
 }
 
 /* ── WATER SOURCE MARKERS ────────────────────────── */
