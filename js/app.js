@@ -45,6 +45,7 @@ const markerRefs = {};
 const villageMarkerRefs = {};
 let _villageHighlight = null;
 let _villageRadiusRing = null;
+let _pipelineLayer = null;
 
 const ROMANIA_BOUNDS = L.latLngBounds([43.6, 20.2], [48.3, 30.0]);
 
@@ -137,6 +138,7 @@ function enterVillageSelect() {
   if (collectionMarker) { leafletMap.removeLayer(collectionMarker); collectionMarker = null; }
   if (_villageHighlight) { leafletMap.removeLayer(_villageHighlight); _villageHighlight = null; }
   if (_villageRadiusRing) { leafletMap.removeLayer(_villageRadiusRing); _villageRadiusRing = null; }
+  if (_pipelineLayer) { leafletMap.removeLayer(_pipelineLayer); _pipelineLayer = null; }
 
   leafletMap.off('click', onMapClickForPoint);
   document.getElementById('map').style.cursor = '';
@@ -154,6 +156,7 @@ function enterPointSelect(village) {
 
   if (collectionMarker) { leafletMap.removeLayer(collectionMarker); collectionMarker = null; }
   if (_villageRadiusRing) { leafletMap.removeLayer(_villageRadiusRing); _villageRadiusRing = null; }
+  if (_pipelineLayer) { leafletMap.removeLayer(_pipelineLayer); _pipelineLayer = null; }
   _allSprings.forEach(sp => markerRefs[sp.id]?.setOpacity(0));
 
   if (_villageHighlight) { leafletMap.removeLayer(_villageHighlight); }
@@ -471,12 +474,30 @@ function selectSource(sp) {
   document.querySelectorAll('.src-card').forEach(c => c.classList.remove('src-card-active'));
   const card = document.getElementById(`srcc-${sp.id}`);
   if (card) card.classList.add('src-card-active');
+  drawPipeline(sp);
   renderDetail(sp);
+}
+
+function drawPipeline(sp) {
+  if (_pipelineLayer) { leafletMap.removeLayer(_pipelineLayer); _pipelineLayer = null; }
+  if (!collectionPoint || !selectedVillage) return;
+
+  const src  = [sp.lat, sp.lon];
+  const cp   = [collectionPoint.lat, collectionPoint.lon];
+  const vill = [selectedVillage.lat, selectedVillage.lon];
+
+  const seg1 = L.polyline([src, cp], {
+    color: '#2563eb', weight: 3, dashArray: '10 6', opacity: 0.9, interactive: false
+  });
+  const seg2 = L.polyline([cp, vill], {
+    color: '#059669', weight: 3, dashArray: '6 6', opacity: 0.85, interactive: false
+  });
+
+  _pipelineLayer = L.layerGroup([seg1, seg2]).addTo(leafletMap);
 }
 
 /* ── DETAIL VIEW ─────────────────────────────────── */
 function renderDetail(sp) {
-  const bd  = breakdown(sp.cost_eur);
   const cc  = confColor(sp.confidence);
   const sat = sp.satellite ?? {};
 
@@ -540,31 +561,42 @@ function renderDetail(sp) {
       </div>
     </div>
 
+    ${collectionPoint && selectedVillage ? (() => {
+      const d1km = parseFloat(distKm);
+      const d1m  = Math.round(d1km * 1000);
+      const d2km = haversineKm(collectionPoint.lat, collectionPoint.lon, selectedVillage.lat, selectedVillage.lon);
+      const d2m  = Math.round(d2km * 1000);
+      const totM = d1m + d2m;
+      const totKm = (totM / 1000).toFixed(2);
+      return `
     <div class="dp-section">
-      <div class="dp-section-label">Cost Estimate</div>
-      <table class="cost-tbl">
-        <tr><td>Pipeline construction</td><td>${fmtCost(bd.pipeline)}</td></tr>
-        <tr><td>Pumping station</td><td>${fmtCost(bd.pump)}</td></tr>
-        <tr><td>Water treatment unit</td><td>${fmtCost(bd.treatment)}</td></tr>
-        <tr class="total-row"><td>Total Estimate</td><td>${fmtCost(sp.cost_eur)}</td></tr>
-      </table>
-    </div>
-
-    <div class="dp-section">
-      <div class="dp-section-label">EU Funding</div>
-      <div class="eu-badge">&#10003; Eligible — POIM 2021–2027</div>
-    </div>
-
-    <div class="btn-row">
-      <button class="btn btn-primary" onclick="generateReport('${sp.id}','${sp.name.replace(/'/g, "\\'")}')">
-        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
-        Report
-      </button>
-      <button class="btn btn-secondary" onclick="flagReview('${sp.id}','${sp.name.replace(/'/g, "\\'")}')">
-        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M14.4 6L14 4H5v17h2v-7h5.6l.4 2h7V6z"/></svg>
-        Flag
-      </button>
+      <div class="dp-section-label">Pipeline Route</div>
+      <div class="pipe-segment">
+        <div class="pipe-seg-line pipe-seg-blue"></div>
+        <div class="pipe-seg-body">
+          <div class="pipe-seg-title">Source → Collection Point</div>
+          <div class="pipe-seg-vals">
+            <span class="pipe-seg-km">${d1km} km</span>
+            <span class="pipe-seg-m">${d1m.toLocaleString()} m</span>
+          </div>
+        </div>
+      </div>
+      <div class="pipe-segment">
+        <div class="pipe-seg-line pipe-seg-green"></div>
+        <div class="pipe-seg-body">
+          <div class="pipe-seg-title">Collection Point → ${selectedVillage.name}</div>
+          <div class="pipe-seg-vals">
+            <span class="pipe-seg-km">${d2km.toFixed(1)} km</span>
+            <span class="pipe-seg-m">${d2m.toLocaleString()} m</span>
+          </div>
+        </div>
+      </div>
+      <div class="pipe-total">
+        <div class="pipe-total-label">Total pipeline</div>
+        <div class="pipe-total-val">${totKm} km <span>${totM.toLocaleString()} m</span></div>
+      </div>
     </div>`;
+    })() : ''}`;
 }
 
 /* ── TABLE ───────────────────────────────────────── */

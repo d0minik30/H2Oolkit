@@ -907,3 +907,42 @@ html.dark { --bg:#0f172a; --card:#1e293b; --border:#334155; --border-2:#475569; 
 .vp-src-badge-wide { flex: 2; }
 .vp-src-badge-val { font-size: .88rem; font-weight: 800; color: var(--text); letter-spacing: -.02em; }
 .vp-src-badge-lbl { font-size: .58rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; margin-top: 1px; }
+
+/* ── PIPELINE SECTION ────────────────────────────── */
+.pipe-segment {
+  display: flex; align-items: stretch; gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+.pipe-segment:last-of-type { border-bottom: none; }
+.pipe-seg-line {
+  width: 4px; border-radius: 2px; flex-shrink: 0;
+}
+.pipe-seg-blue  { background: #2563eb; }
+.pipe-seg-green { background: #059669; }
+.pipe-seg-body { flex: 1; }
+.pipe-seg-title {
+  font-size: .72rem; font-weight: 600; color: var(--text-sub); margin-bottom: 4px;
+}
+.pipe-seg-vals { display: flex; align-items: baseline; gap: 8px; }
+.pipe-seg-km {
+  font-size: 1.1rem; font-weight: 800; color: var(--text); letter-spacing: -.02em;
+}
+.pipe-seg-m {
+  font-size: .7rem; font-weight: 600; color: var(--text-muted);
+}
+.pipe-total {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-top: 10px; padding: 10px 12px;
+  background: var(--accent-dim); border: 1px solid rgba(37,99,235,.18); border-radius: 8px;
+}
+.pipe-total-label {
+  font-size: .68rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .07em; color: var(--accent);
+}
+.pipe-total-val {
+  font-size: 1rem; font-weight: 800; color: var(--accent); letter-spacing: -.02em;
+}
+.pipe-total-val span {
+  font-size: .68rem; font-weight: 600; color: var(--text-muted); margin-left: 4px;
+}
