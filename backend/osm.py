@@ -1,7 +1,10 @@
 """OpenStreetMap water source and village search via Overpass API."""
 
-import requests
+import logging
 import math
+import requests
+
+_log = logging.getLogger("h2oolkit.osm")
 
 OVERPASS_URL = "https://overpass-api.de/api/interpreter"
 _TIMEOUT = 40

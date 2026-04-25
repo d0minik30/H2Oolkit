@@ -1,3 +1,10 @@
+"""H2Oolkit backend — real-time water source detection and feasibility analysis.
+
+All static/mock data has been removed. Source discovery is performed live via
+OpenStreetMap (Overpass API) and EU-Hydro (Google Earth Engine), and feasibility
+is calculated per user-chosen collection point.
+"""
+
 from .weather import get_historical_precipitation
 from .spring_detector import calculate_spring_probability
 from .osm import search_osm_springs, search_all_water_sources
@@ -7,14 +14,6 @@ from .water_reserve import estimate_water_reserve
 from .route_calculator import calculate_pipeline_route
 from .source_ranker import rank_water_sources
 from .analyzer import analyze_spring_location, analyze_village_water_supply
-from .pdf_generator import generate_report
-from .frontend_adapter import (
-    load_springs,
-    get_spring_by_id,
-    get_village_zones,
-    spring_to_satellite_data,
-    village_zone_to_dict,
-)
 
 __all__ = [
     "get_historical_precipitation",
@@ -29,10 +28,4 @@ __all__ = [
     "rank_water_sources",
     "analyze_spring_location",
     "analyze_village_water_supply",
-    "generate_report",
-    "load_springs",
-    "get_spring_by_id",
-    "get_village_zones",
-    "spring_to_satellite_data",
-    "village_zone_to_dict",
 ]

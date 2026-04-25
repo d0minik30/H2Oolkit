@@ -10,13 +10,14 @@ Requires:
 """
 
 import logging
-import functools
+import os
 from typing import Optional
 
 log = logging.getLogger("h2oolkit.eu_hydro")
 
 # Lazy GEE init — only runs if this module is actually used.
-# Avoids crashing the whole server if earthengine isn't installed.
+# Avoids crashing the whole server if earthengine isn't installed/authenticated.
+# Optionally set GEE_PROJECT env var to scope the call to a specific GCP project.
 _ee = None
 
 def _get_ee():
@@ -25,11 +26,15 @@ def _get_ee():
         return _ee
     try:
         import ee
-        ee.Initialize(project="your-gee-project-id")  # ← replace this
+        project = os.environ.get("GEE_PROJECT") or None
+        if project:
+            ee.Initialize(project=project)
+        else:
+            ee.Initialize()
         _ee = ee
         log.info("Google Earth Engine initialised")
     except Exception as exc:
-        log.warning(f"GEE unavailable — EU-Hydro checks disabled: {exc}")
+        log.warning(f"GEE unavailable — falling back to OSM-only data: {exc}")
         _ee = False   # False = tried and failed, don't retry
     return _ee
 
