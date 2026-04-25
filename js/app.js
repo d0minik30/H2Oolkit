@@ -53,10 +53,15 @@ const markerRefs = {};
 function initMap() {
   leafletMap = L.map('map', { center: [45.9, 26.1], zoom: 8, zoomControl: true });
 
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
-    subdomains: 'abcd',
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    attribution: 'Imagery &copy; Esri &mdash; Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP',
     maxZoom: 19
+  }).addTo(leafletMap);
+
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
+    attribution: '',
+    maxZoom: 19,
+    opacity: 0.85
   }).addTo(leafletMap);
 
   const legend = L.control({ position: 'bottomleft' });
