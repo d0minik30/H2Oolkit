@@ -20,22 +20,21 @@ if not exist "%PYTHON%" (
     exit /b 1
 )
 
-REM Install/upgrade requirements if needed
-echo [*] Checking dependencies...
-"%PYTHON%" -m pip install -q flask flask-cors requests numpy reportlab 2>nul
-
 echo.
 echo =========================================
 echo   Backend API   ^|  http://localhost:5000
 echo   Frontend page ^|  http://localhost:8000
 echo =========================================
 echo.
-echo Press Ctrl+C to stop either server.
+echo Starting both servers in separate windows...
+echo Press Ctrl+C in each window to stop.
 echo.
 
-REM Start backend (Flask) in a new visible window
-echo [*] Starting Backend on port 5000...
-start "H2Oolkit Backend (Port 5000)" /wait cmd /k "cd /d "!ROOT!" && "!PYTHON!" -m backend.server"
+start "H2Oolkit Backend (Port 5000)" cmd /k "cd /d "!ROOT!" && "!PYTHON!" -m backend.server"
+start "H2Oolkit Frontend (Port 8000)" cmd /k "cd /d "!ROOT!" && "!PYTHON!" -m http.server 8000"
 
-REM Note: Frontend would run in current window, but we exit after backend
+echo [*] Both servers launched. Opening browser in 2 seconds...
+timeout /t 2 /nobreak >nul
+start http://localhost:8000
+
 endlocal

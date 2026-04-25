@@ -232,17 +232,26 @@ def analyze_village_water_supply(
     village_elevation: float | None = None,
     village_name: str = "Village",
     include_feasibility: bool = True,
+    search_lat: float | None = None,
+    search_lon: float | None = None,
+    search_radius_m: int | None = None,
 ) -> dict:
     """
     Village-centric analysis: find every water source within radius_m,
     look up their elevations, and rank them by supply efficiency.
 
-    Efficiency weighs topography (gravity vs pumping) most heavily,
-    then distance, reliability, and cost.  The best option is ranked #1.
-
-    Returns a dict with ranked_sources, best_option, alternatives, and a
-    plain-language recommendation ready for the frontend or PDF generator.
+    village_lat/lon  : the destination ("collection point") used for distance
+                       and feasibility calculations (gravity vs pump, cost).
+    search_lat/lon   : optional separate centre for source DISCOVERY. Defaults
+                       to the village location. Use when the user searches a
+                       location (the scan circle), then picks a collection
+                       point inside that circle — sources should still be the
+                       ones found around the original search centre.
     """
+    sl = village_lat if search_lat is None else search_lat
+    so = village_lon if search_lon is None else search_lon
+    sr = radius_m    if search_radius_m is None else search_radius_m
+
     # 1. Village elevation — looked up if not provided
     if village_elevation is None:
         village_elevation = get_elevation(village_lat, village_lon)
@@ -256,21 +265,21 @@ def analyze_village_water_supply(
     }
 
     # 2. Regional precipitation (single call — all sources in radius share it)
-    weather = get_historical_precipitation(village_lat, village_lon, years=10)
+    weather = get_historical_precipitation(sl, so, years=10)
 
     # 3. Discover all OSM water bodies
-    sources = search_all_water_sources(village_lat, village_lon, radius_m=radius_m)
+    sources = search_all_water_sources(sl, so, radius_m=sr)
 
     # 4. Annotate OSM sources with EU-Hydro linkage data
     sources = annotate_osm_sources_with_eu_hydro(
         sources,
-        lat=village_lat,
-        lon=village_lon,
-        radius_m=radius_m,
+        lat=sl,
+        lon=so,
+        radius_m=sr,
     )
 
     # 5. Fetch EU-Hydro spring sources not already present in OSM
-    eu_hydro_result = find_unlinked_springs(village_lat, village_lon, radius_m)
+    eu_hydro_result = find_unlinked_springs(sl, so, sr)
     for sp in eu_hydro_result.get("unlinked", []):
         already_present = any(
             abs(s["lat"] - sp["lat"]) < 0.0001 and
@@ -286,7 +295,7 @@ def analyze_village_water_supply(
                 "elevation": None,
                 "name": sp["name"],
                 "source_type": "spring",
-                "distance_m": round(haversine_m(village_lat, village_lon, sp["lat"], sp["lon"]), 1),
+                "distance_m": round(haversine_m(sl, so, sp["lat"], sp["lon"]), 1),
                 "drinking_water": "unknown",
                 "intermittent": False,
                 "estimated_daily_flow_liters": 3_000,
@@ -316,6 +325,13 @@ def analyze_village_water_supply(
     elevations = get_elevations_batch(points)
     for source, elev in zip(sources, elevations):
         source["elevation"] = elev if elev else village_elevation
+
+    # Recompute distance from the COLLECTION POINT (village) so the ranker's
+    # distance-score and route calculator both use the same reference.
+    for source in sources:
+        source["distance_m"] = round(
+            haversine_m(village_lat, village_lon, source["lat"], source["lon"]), 1
+        )
 
     # 7. Fetch GEE satellite data for each source and calculate spring probability
     import logging

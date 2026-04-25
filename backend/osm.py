@@ -4,8 +4,9 @@ import requests
 import math
 
 OVERPASS_URL = "https://overpass-api.de/api/interpreter"
-_TIMEOUT = 30
+_TIMEOUT = 40
 _MAX_RETRIES = 2
+_HEADERS = {"User-Agent": "H2Oolkit/1.0 (CASSINI hackathon; contact: marcudominik@gmail.com)"}
 
 # Maps OSM tag combinations to a normalised source_type string
 _SOURCE_TYPE_RULES = [
@@ -53,6 +54,7 @@ def search_osm_springs(lat: float, lon: float, radius_m: int = 10000) -> list:
             resp = requests.post(
                 OVERPASS_URL,
                 data={"data": query},
+                headers=_HEADERS,
                 timeout=_TIMEOUT,
             )
             resp.raise_for_status()
@@ -62,8 +64,10 @@ def search_osm_springs(lat: float, lon: float, radius_m: int = 10000) -> list:
             return springs
         except requests.exceptions.Timeout:
             if attempt == _MAX_RETRIES - 1:
+                _log.warning("Overpass API timed out after %d attempts", _MAX_RETRIES)
                 return []
-        except Exception:
+        except Exception as exc:
+            _log.warning("Overpass API call failed: %s", exc)
             return []
     return []
 
@@ -95,6 +99,7 @@ def search_all_water_sources(lat: float, lon: float, radius_m: int = 10_000) -> 
             resp = requests.post(
                 OVERPASS_URL,
                 data={"data": query},
+                headers=_HEADERS,
                 timeout=_TIMEOUT,
             )
             resp.raise_for_status()
@@ -113,8 +118,10 @@ def search_all_water_sources(lat: float, lon: float, radius_m: int = 10_000) -> 
             return unique
         except requests.exceptions.Timeout:
             if attempt == _MAX_RETRIES - 1:
+                _log.warning("Overpass API timed out after %d attempts", _MAX_RETRIES)
                 return []
-        except Exception:
+        except Exception as exc:
+            _log.warning("Overpass API call failed: %s", exc)
             return []
     return []
 
@@ -129,7 +136,7 @@ def search_osm_villages(lat: float, lon: float, radius_m: int = 15000) -> list:
     out body;
     """
     try:
-        resp = requests.post(OVERPASS_URL, data={"data": query}, timeout=_TIMEOUT)
+        resp = requests.post(OVERPASS_URL, data={"data": query}, headers=_HEADERS, timeout=_TIMEOUT)
         resp.raise_for_status()
         elements = resp.json().get("elements", [])
         villages = []

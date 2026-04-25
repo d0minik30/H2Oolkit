@@ -1,60 +1,50 @@
 """
-H2Oolkit Flask API
-==================
-Bridges the static-file frontend (`index.html` + `js/app.js`) to the
-Python analysis modules (weather, spring detection, OSM, EU-Hydro, costing, PDF).
+H2Oolkit Flask API (real-time, no mock data)
+============================================
+Bridges the static-file frontend to the live analysis pipeline.
 
 Endpoints
 ---------
     GET  /api/health
-    GET  /api/springs
-    GET  /api/springs/<id>
-    POST /api/springs/<id>/analyze
-    GET  /api/springs/<id>/report               (returns PDF download)
-    POST /api/analyze/spring                    (lat/lon + custom satellite_data)
-    POST /api/analyze/location                  (place name or lat/lon)
-    POST /api/analyze/village                   (lat/lon + population)
     GET  /api/water-sources?lat=&lon=&radius_m=
+                Returns every water body (OSM + EU-Hydro) within the radius.
+                Used by the frontend to draw blue dots immediately after a
+                location search.
+    POST /api/analyze/site
+                Body: {
+                    collection_point: { lat, lon },
+                    search_center:    { lat, lon },   # optional (defaults to collection_point)
+                    radius_m: int,                    # optional (default 10000)
+                    population: int,                  # optional (default 500)
+                    name: str                         # optional
+                }
+                Returns ranked sources with feasibility scores.
     GET  /api/eu-hydro/unlinked-springs?lat=&lon=&radius_m=
 
-Run from the project root with the venv active:
-
+Run from the project root:
     py -m backend.server
-
-Then the frontend (served on http://localhost:8000 by `python -m http.server`)
-calls these endpoints at http://localhost:5000.
 """
 
 from __future__ import annotations
 
 import os
-import tempfile
 import logging
-import requests
-from pathlib import Path
 
-from flask import Flask, jsonify, request, send_file, abort
+from flask import Flask, jsonify, request, abort
 from flask_cors import CORS
 
-from .analyzer import analyze_spring_location, analyze_village_water_supply
-from .osm import search_all_water_sources
-from .pdf_generator import generate_report
-from .eu_hydro import find_unlinked_springs
-from .frontend_adapter import (
-    load_springs,
-    get_spring_by_id,
-    spring_to_satellite_data,
-    village_zone_to_dict,
+from .analyzer import analyze_village_water_supply
+from .osm import search_all_water_sources, _haversine_m
+from .eu_hydro import (
+    annotate_osm_sources_with_eu_hydro,
+    find_unlinked_springs,
 )
 
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s] %(levelname)s %(message)s')
 log = logging.getLogger('h2oolkit')
 
 app = Flask(__name__)
-CORS(app)   # allow browser at http://localhost:8000 to call us at :5000
-
-_REPORT_DIR = Path(tempfile.gettempdir()) / 'h2oolkit_reports'
-_REPORT_DIR.mkdir(exist_ok=True)
+CORS(app)
 
 
 # ── Health ────────────────────────────────────────────────────────────────────
@@ -64,149 +54,17 @@ def health():
     return jsonify({'status': 'ok', 'service': 'h2oolkit-backend'})
 
 
-# ── Springs registry ──────────────────────────────────────────────────────────
-
-@app.get('/api/springs')
-def list_springs():
-    springs, zones = load_springs()
-    return jsonify({
-        'springs': springs,
-        'village_zones': [z.get('properties', {}) for z in zones],
-        'count': len(springs),
-    })
-
-
-@app.get('/api/springs/<spring_id>')
-def get_spring(spring_id: str):
-    spring = get_spring_by_id(spring_id)
-    if not spring:
-        abort(404, description=f'Spring {spring_id} not found')
-    return jsonify(spring)
-
-
-# ── Live analysis ─────────────────────────────────────────────────────────────
-
-@app.post('/api/springs/<spring_id>/analyze')
-def analyze_known_spring(spring_id: str):
-    """Run full live analysis on a stored spring (no body required)."""
-    spring = get_spring_by_id(spring_id)
-    if not spring:
-        abort(404, description=f'Spring {spring_id} not found')
-
-    nearest_village = _resolve_village_for_spring(spring_id, spring)
-    satellite_data = spring_to_satellite_data(spring)
-
-    log.info(f'Analyze {spring_id} @ {spring["lat"]:.4f},{spring["lon"]:.4f}')
-    result = analyze_spring_location(
-        lat=spring['lat'],
-        lon=spring['lon'],
-        satellite_data=satellite_data,
-        nearest_village=nearest_village,
-    )
-    result['spring_id'] = spring_id
-    result['cached'] = {
-        'reserve_m3_day': spring.get('reserve'),
-        'confidence_pct': spring.get('confidence'),
-        'cost_eur':       spring.get('cost_eur'),
-    }
-    return jsonify(result)
-
-
-@app.post('/api/analyze/spring')
-def analyze_arbitrary_spring():
-    """
-    Analyse a candidate spring location.
-
-    Request JSON: { lat, lon, satellite_data?: {...}, nearest_village?: {...} }
-    If satellite_data is omitted, sane Carpathian defaults are used.
-    """
-    body = request.get_json(force=True, silent=True) or {}
-    if 'lat' not in body or 'lon' not in body:
-        abort(400, description='lat and lon are required')
-
-    satellite_data = body.get('satellite_data') or _default_satellite_data()
-    nearest_village = body.get('nearest_village')
-
-    result = analyze_spring_location(
-        lat=float(body['lat']),
-        lon=float(body['lon']),
-        satellite_data=satellite_data,
-        nearest_village=nearest_village,
-    )
-    return jsonify(result)
-
-
-@app.post('/api/analyze/location')
-def analyze_location():
-    """
-    Location-centric analysis: accepts a place name OR lat/lon, geocodes if needed,
-    then discovers and ranks water sources within a configurable radius.
-
-    Request JSON: { "location": "Vrancea, Romania" }
-                  OR { "lat": 45.7, "lon": 26.7 }
-                  Optional: "radius_m" (default 5000), "population" (default 500)
-    """
-    body = request.get_json(force=True, silent=True) or {}
-
-    if 'location' in body:
-        try:
-            lat, lon, location_name = _geocode_location(body['location'])
-        except (ValueError, RuntimeError) as exc:
-            abort(400, description=str(exc))
-    elif 'lat' in body and 'lon' in body:
-        lat, lon = float(body['lat']), float(body['lon'])
-        location_name = body.get('name', f'{lat:.4f}, {lon:.4f}')
-    else:
-        abort(400, description='Provide "location" name or "lat"/"lon" coordinates')
-
-    radius_m   = int(body.get('radius_m', 10_000))
-    population = int(body.get('population', 500))
-
-    log.info(f'Analyze location "{location_name}" @ {lat:.4f},{lon:.4f} r={radius_m}m')
-    result = analyze_village_water_supply(
-        village_lat=lat,
-        village_lon=lon,
-        village_population=population,
-        radius_m=radius_m,
-        village_name=location_name,
-        include_feasibility=True,
-    )
-    result['query_location'] = {
-        'lat': lat,
-        'lon': lon,
-        'name': location_name,
-        'radius_m': radius_m,
-    }
-    return jsonify(result)
-
-
-@app.post('/api/analyze/village')
-def analyze_village():
-    """
-    Village-centric analysis.
-
-    Request JSON: { lat, lon, population?, radius_m?, name? }
-    Returns ranked water sources within the radius.
-    """
-    body = request.get_json(force=True, silent=True) or {}
-    if 'lat' not in body or 'lon' not in body:
-        abort(400, description='lat and lon are required')
-
-    result = analyze_village_water_supply(
-        village_lat=float(body['lat']),
-        village_lon=float(body['lon']),
-        village_population=int(body.get('population') or 500),
-        radius_m=int(body.get('radius_m') or 10_000),
-        village_elevation=body.get('elevation'),
-        village_name=body.get('name', 'Village'),
-    )
-    return jsonify(result)
-
+# ── Water sources (OSM + EU-Hydro) ────────────────────────────────────────────
 
 @app.get('/api/water-sources')
 def water_sources():
     """
-    Return all OSM water bodies near a point.
+    Discover every water body within radius_m of (lat, lon).
+
+    Combines:
+      - OpenStreetMap nodes/ways (springs, wells, streams, rivers, lakes)
+      - EU-Hydro spring points not already present in OSM
+    Each OSM source is annotated with its EU-Hydro linkage status.
 
     Query params: lat, lon, radius_m (default 10000)
     """
@@ -216,140 +74,135 @@ def water_sources():
     except (KeyError, ValueError):
         abort(400, description='lat and lon query parameters are required')
     radius_m = int(request.args.get('radius_m', 10_000))
+
+    log.info(f'Sources @ {lat:.4f},{lon:.4f} r={radius_m}m')
+
+    sources = search_all_water_sources(lat, lon, radius_m)
+    sources = annotate_osm_sources_with_eu_hydro(sources, lat=lat, lon=lon, radius_m=radius_m)
+
+    eu_result = find_unlinked_springs(lat, lon, radius_m)
+    for sp in eu_result.get('unlinked', []):
+        already_present = any(
+            abs(s['lat'] - sp['lat']) < 0.0001 and abs(s['lon'] - sp['lon']) < 0.0001
+            for s in sources
+        )
+        if not already_present:
+            sources.append({
+                'id': f"eu_hydro_{sp['eu_hydro_id']}",
+                'osm_type': 'eu_hydro',
+                'lat': sp['lat'],
+                'lon': sp['lon'],
+                'elevation': None,
+                'name': sp.get('name') or 'EU-Hydro spring',
+                'source_type': 'spring',
+                'distance_m': round(_haversine_m(lat, lon, sp['lat'], sp['lon']), 1),
+                'drinking_water': 'unknown',
+                'intermittent': False,
+                'estimated_daily_flow_liters': 3000,
+                'reliability_base': 0.75,
+                'tags': sp.get('raw_properties', {}),
+                'eu_hydro_linked': False,
+                'eu_hydro_note': 'From EU-Hydro database, not in OSM.',
+            })
+
+    sources.sort(key=lambda s: s['distance_m'])
+
     return jsonify({
         'lat': lat,
         'lon': lon,
         'radius_m': radius_m,
-        'sources': search_all_water_sources(lat, lon, radius_m),
+        'sources': sources,
+        'count': len(sources),
+        'eu_hydro_available': eu_result.get('available', False),
     })
 
 
-# ── EU-Hydro ──────────────────────────────────────────────────────────────────
+# ── Site feasibility analysis ─────────────────────────────────────────────────
 
-@app.get('/api/eu-hydro/unlinked-springs')
-def eu_hydro_unlinked_springs():
+@app.post('/api/analyze/site')
+def analyze_site():
     """
-    Return spring sources from EU-Hydro that are NOT officially connected
-    to any river or lake in the EU-Hydro water network.
+    Run a full feasibility analysis for a collection point.
 
-    Query params: lat, lon, radius_m (default 10000)
+    Body:
+        {
+          "collection_point": { "lat": ..., "lon": ... },
+          "search_center":    { "lat": ..., "lon": ... },   # optional
+          "radius_m":   10000,                              # optional
+          "population": 500,                                # optional
+          "name":       "Search query"                      # optional
+        }
 
     Response:
         {
-          lat, lon, radius_m,
-          unlinked: [ {eu_hydro_id, lat, lon, name, wbclass, ...} ],
-          linked:   [ ... ],
-          available: bool   — false if GEE is unreachable
+          village: { lat, lon, elevation, population, name },
+          ranked_sources: [ ... sorted by feasibility_score, includes
+                              route, cost, scores, recommendation ... ],
+          best_option, alternatives, weather, overall_confidence,
+          recommendation, search_center, collection_point
         }
     """
+    body = request.get_json(force=True, silent=True) or {}
+    cp = body.get('collection_point') or {}
+    sc = body.get('search_center') or cp
+
+    if 'lat' not in cp or 'lon' not in cp:
+        abort(400, description='collection_point with lat/lon is required')
+
+    radius_m   = int(body.get('radius_m', 10_000))
+    population = int(body.get('population', 500))
+    name       = body.get('name') or 'Selected site'
+
+    log.info(
+        f'Site analysis: cp={cp["lat"]:.4f},{cp["lon"]:.4f} '
+        f'sc={sc.get("lat", cp["lat"]):.4f},{sc.get("lon", cp["lon"]):.4f} '
+        f'r={radius_m}m'
+    )
+
+    result = analyze_village_water_supply(
+        village_lat=float(cp['lat']),
+        village_lon=float(cp['lon']),
+        village_population=population,
+        radius_m=radius_m,
+        village_name=name,
+        include_feasibility=True,
+        search_lat=float(sc.get('lat', cp['lat'])),
+        search_lon=float(sc.get('lon', cp['lon'])),
+        search_radius_m=radius_m,
+    )
+
+    # The ranker sorts by efficiency_score. Re-sort by feasibility_score
+    # (0–100) so the frontend list matches the user's request: "starting
+    # top to down with the one having the highest feasibility value".
+    if result.get('ranked_sources'):
+        result['ranked_sources'].sort(
+            key=lambda s: s.get('feasibility_score', 0),
+            reverse=True,
+        )
+        for new_rank, src in enumerate(result['ranked_sources'], start=1):
+            src['feasibility_rank'] = new_rank
+        result['best_option']  = result['ranked_sources'][0]
+        result['alternatives'] = result['ranked_sources'][1:4]
+
+    result['collection_point'] = {'lat': float(cp['lat']), 'lon': float(cp['lon'])}
+    result['search_center']    = {'lat': float(sc.get('lat', cp['lat'])),
+                                  'lon': float(sc.get('lon', cp['lon']))}
+    return jsonify(result)
+
+
+# ── EU-Hydro raw query (kept for diagnostics) ─────────────────────────────────
+
+@app.get('/api/eu-hydro/unlinked-springs')
+def eu_hydro_unlinked_springs():
     try:
         lat = float(request.args['lat'])
         lon = float(request.args['lon'])
     except (KeyError, ValueError):
         abort(400, description='lat and lon query parameters are required')
-
     radius_m = int(request.args.get('radius_m', 10_000))
 
-    log.info(f'EU-Hydro unlinked springs @ {lat:.4f},{lon:.4f} r={radius_m}m')
     result = find_unlinked_springs(lat, lon, radius_m)
-
-    return jsonify({
-        'lat': lat,
-        'lon': lon,
-        'radius_m': radius_m,
-        **result,
-    })
-
-
-# ── Report (PDF) ──────────────────────────────────────────────────────────────
-
-@app.get('/api/springs/<spring_id>/report')
-def spring_report(spring_id: str):
-    spring = get_spring_by_id(spring_id)
-    if not spring:
-        abort(404, description=f'Spring {spring_id} not found')
-
-    nearest_village = _resolve_village_for_spring(spring_id, spring)
-    satellite_data = spring_to_satellite_data(spring)
-
-    log.info(f'Report  {spring_id} @ {spring["lat"]:.4f},{spring["lon"]:.4f}')
-    analysis = analyze_spring_location(
-        lat=spring['lat'],
-        lon=spring['lon'],
-        satellite_data=satellite_data,
-        nearest_village=nearest_village,
-    )
-
-    safe_name = ''.join(
-        c for c in spring.get('name', spring_id) if c.isalnum() or c in '-_'
-    )
-    out_path = _REPORT_DIR / f'{spring_id}_{safe_name}.pdf'
-    generate_report(analysis, str(out_path))
-
-    return send_file(
-        str(out_path),
-        as_attachment=True,
-        download_name=f'H2Oolkit_{spring_id}_{safe_name}.pdf',
-        mimetype='application/pdf',
-    )
-
-
-# ── Helpers ───────────────────────────────────────────────────────────────────
-
-def _geocode_location(name: str) -> tuple:
-    """Geocode a place name via Nominatim. Returns (lat, lon, display_name)."""
-    url = 'https://nominatim.openstreetmap.org/search'
-    params = {'q': name, 'format': 'json', 'limit': 1, 'addressdetails': 1}
-    headers = {'User-Agent': 'H2Oolkit/1.0 (h2oolkit-hackathon)'}
-    try:
-        r = requests.get(url, params=params, headers=headers, timeout=15)
-        r.raise_for_status()
-        results = r.json()
-    except requests.RequestException as exc:
-        raise RuntimeError(f'Geocoding service unreachable: {exc}') from exc
-    if not results:
-        raise ValueError(f"Location not found: '{name}'. Try adding the country name.")
-    hit = results[0]
-    addr = hit.get('address', {})
-    label = (
-        addr.get('village') or addr.get('town') or addr.get('city')
-        or addr.get('county') or addr.get('state') or name
-    )
-    return float(hit['lat']), float(hit['lon']), label
-
-
-def _resolve_village_for_spring(spring_id: str, spring: dict) -> dict | None:
-    """Find the village_zone polygon linked to this spring; return its centroid."""
-    _, zones = load_springs()
-    for zone in zones:
-        props = zone.get('properties', {})
-        if props.get('linked_spring_id') == spring_id:
-            return village_zone_to_dict(zone)
-
-    # Fall back to the spring's nearest_village name if known (no coords).
-    name = spring.get('nearest_village')
-    if name:
-        return {
-            'name': name,
-            'lat': spring['lat'],
-            'lon': spring['lon'] + 0.05,
-            'population': 500,
-        }
-    return None
-
-
-def _default_satellite_data() -> dict:
-    """Sane defaults for a candidate spring with no telemetry yet."""
-    return {
-        'ndvi_dry':             0.45,
-        'ndvi_wet':             0.55,
-        'soil_moisture_summer': 0.40,
-        'jrc_occurrence':       30.0,
-        'slope_degrees':        12.0,
-        'elevation':            500.0,
-        'catchment_area_km2':   8.0,
-        'distance_to_river_m':  600.0,
-    }
+    return jsonify({'lat': lat, 'lon': lon, 'radius_m': radius_m, **result})
 
 
 # ── Error handlers ────────────────────────────────────────────────────────────

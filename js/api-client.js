@@ -1,91 +1,59 @@
 /**
  * api-client.js
- * Thin wrapper around the H2Oolkit backend (`backend/server.py`).
+ * Wrapper around the H2Oolkit Flask backend (`backend/server.py`).
  *
- * The backend is an optional companion service.  When it is unreachable
- * the frontend continues to work from the static JSON files — only the
- * "live analysis" and "generate PDF" features become unavailable.
+ * The backend is REQUIRED — there is no static-data fallback any more.
+ * If `/api/health` doesn't respond the frontend shows an explicit error.
  */
 
 const H2O_API = (() => {
-  // Same host the page was served from, but always on port 5000.
-  // Override by setting `window.H2O_API_BASE` before this script loads.
   if (window.H2O_API_BASE) return window.H2O_API_BASE.replace(/\/$/, '');
   const host = window.location.hostname || 'localhost';
   return `http://${host}:5000`;
 })();
 
-let _backendOnline = null;   // null = unchecked, true/false = checked
-
 async function checkBackend() {
-  if (_backendOnline !== null) return _backendOnline;
   try {
     const r = await fetch(`${H2O_API}/api/health`, { method: 'GET' });
-    _backendOnline = r.ok;
+    return r.ok;
   } catch (_) {
-    _backendOnline = false;
+    return false;
   }
-  return _backendOnline;
 }
 
-async function apiAnalyzeSpring(springId) {
-  const r = await fetch(`${H2O_API}/api/springs/${encodeURIComponent(springId)}/analyze`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: '{}',
-  });
-  if (!r.ok) throw new Error(`analyze failed: HTTP ${r.status}`);
-  return r.json();
-}
-
-async function apiAnalyzeVillage(payload) {
-  const r = await fetch(`${H2O_API}/api/analyze/village`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-  if (!r.ok) throw new Error(`village analysis failed: HTTP ${r.status}`);
-  return r.json();
-}
-
-async function apiAnalyzeLocation(payload) {
-  const r = await fetch(`${H2O_API}/api/analyze/location`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-  if (!r.ok) throw new Error(`location analysis failed: HTTP ${r.status}`);
-  return r.json();
-}
-
-function apiReportUrl(springId) {
-  return `${H2O_API}/api/springs/${encodeURIComponent(springId)}/report`;
-}
-
-async function apiDownloadReport(springId, fileName) {
-  const r = await fetch(apiReportUrl(springId));
+async function fetchWaterSources(lat, lon, radius_m = 10000) {
+  const r = await fetch(
+    `${H2O_API}/api/water-sources?lat=${lat}&lon=${lon}&radius_m=${radius_m}`
+  );
   if (!r.ok) {
     let msg = `HTTP ${r.status}`;
     try { msg = (await r.json()).message || msg; } catch (_) {}
     throw new Error(msg);
   }
-  const blob = await r.blob();
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = fileName || `H2Oolkit_${springId}.pdf`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
+  return r.json();
+}
+
+async function analyzeSite({ collection_point, search_center, radius_m = 10000, name, population }) {
+  const body = { collection_point, search_center, radius_m };
+  if (name)       body.name = name;
+  if (population) body.population = population;
+
+  const r = await fetch(`${H2O_API}/api/analyze/site`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) {
+    let msg = `HTTP ${r.status}`;
+    try { msg = (await r.json()).message || msg; } catch (_) {}
+    throw new Error(msg);
+  }
+  return r.json();
 }
 
 window.H2O = {
   base: H2O_API,
   checkBackend,
-  analyzeSpring: apiAnalyzeSpring,
-  analyzeVillage: apiAnalyzeVillage,
-  analyzeLocation: apiAnalyzeLocation,
-  downloadReport: apiDownloadReport,
-  reportUrl: apiReportUrl,
+  fetchWaterSources,
+  analyzeSite,
 };
