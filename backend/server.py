@@ -133,6 +133,44 @@ def analyze_arbitrary_spring():
     return jsonify(result)
 
 
+@app.post('/api/analyze/location')
+def analyze_location():
+    """
+    Location-centric analysis: accepts a place name OR lat/lon, geocodes if needed,
+    then discovers and ranks water sources within a 10 km radius.
+
+    Request JSON: { "location": "Vrancea, Romania" }
+                  OR { "lat": 45.7, "lon": 26.7 }
+                  Optional: "radius_m" (default 5000), "population" (default 500)
+    """
+    body = request.get_json(force=True, silent=True) or {}
+
+    if 'location' in body:
+        try:
+            lat, lon, location_name = _geocode_location(body['location'])
+        except (ValueError, RuntimeError) as exc:
+            abort(400, description=str(exc))
+    elif 'lat' in body and 'lon' in body:
+        lat, lon = float(body['lat']), float(body['lon'])
+        location_name = body.get('name', f'{lat:.4f}, {lon:.4f}')
+    else:
+        abort(400, description='Provide "location" name or "lat"/"lon" coordinates')
+
+    radius_m   = int(body.get('radius_m', 5_000))
+    population = int(body.get('population', 500))
+
+    log.info(f'Analyze location "{location_name}" @ {lat:.4f},{lon:.4f} r={radius_m}m')
+    result = analyze_village_water_supply(
+        village_lat=lat,
+        village_lon=lon,
+        village_population=population,
+        radius_m=radius_m,
+        village_name=location_name,
+    )
+    result['query_location'] = {'lat': lat, 'lon': lon, 'name': location_name, 'radius_m': radius_m}
+    return jsonify(result)
+
+
 @app.post('/api/analyze/village')
 def analyze_village():
     """
@@ -204,6 +242,27 @@ def spring_report(spring_id: str):
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _geocode_location(name: str) -> tuple:
+    """Geocode a place name via Nominatim. Returns (lat, lon, display_name)."""
+    import requests as _req
+    url = 'https://nominatim.openstreetmap.org/search'
+    params = {'q': name, 'format': 'json', 'limit': 1, 'addressdetails': 1}
+    headers = {'User-Agent': 'H2Oolkit/1.0 (h2oolkit-hackathon)'}
+    try:
+        r = _req.get(url, params=params, headers=headers, timeout=15)
+        r.raise_for_status()
+        results = r.json()
+    except Exception as exc:
+        raise RuntimeError(f'Geocoding service unreachable: {exc}') from exc
+    if not results:
+        raise ValueError(f"Location not found: '{name}'. Try adding the country name.")
+    hit = results[0]
+    addr = hit.get('address', {})
+    label = (addr.get('village') or addr.get('town') or addr.get('city')
+             or addr.get('county') or addr.get('state') or name)
+    return float(hit['lat']), float(hit['lon']), label
+
 
 def _resolve_village_for_spring(spring_id: str, spring: dict) -> dict | None:
     """Find the village_zone polygon linked to this spring; return its centroid."""

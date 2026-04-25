@@ -48,6 +48,16 @@ async function apiAnalyzeVillage(payload) {
   return r.json();
 }
 
+async function apiAnalyzeLocation(payload) {
+  const r = await fetch(`${H2O_API}/api/analyze/location`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!r.ok) throw new Error(`location analysis failed: HTTP ${r.status}`);
+  return r.json();
+}
+
 function apiReportUrl(springId) {
   return `${H2O_API}/api/springs/${encodeURIComponent(springId)}/report`;
 }
@@ -75,6 +85,7 @@ window.H2O = {
   checkBackend,
   analyzeSpring: apiAnalyzeSpring,
   analyzeVillage: apiAnalyzeVillage,
+  analyzeLocation: apiAnalyzeLocation,
   downloadReport: apiDownloadReport,
   reportUrl: apiReportUrl,
 };

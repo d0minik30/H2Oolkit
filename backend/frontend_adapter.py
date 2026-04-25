@@ -75,15 +75,21 @@ def spring_to_satellite_data(spring: dict) -> dict:
     Translate a frontend spring record to the satellite_data dict
     expected by `analyze_spring_location`.
 
-    Mapping rationale:
-      ndvi_dry     ← Sentinel-2 NDWI       (water-presence proxy in dry season)
-      ndvi_wet     ← NDWI × 1.18           (wet-season vegetation higher)
-      soil_moisture_summer ← Sentinel-1 SAR anomaly (already 0–1)
+    Preferred sources (set by process_pipeline.py when extract_satellite.py has run):
+      ndvi_dry  ← satellite.ndvi_dry   (Sep NDVI — actual dry-season vegetation index)
+      ndvi_wet  ← satellite.ndvi_wet   (Jun NDVI — actual wet-season vegetation index)
+
+    Fallback when actual NDVI is absent (older data files or no grid):
+      ndvi_dry  ← sentinel2_ndwi       (NDWI approximates dry-season moisture)
+      ndvi_wet  ← NDWI × 1.18         (wet-season vegetation typically ~18% higher)
+
+    Other fields:
+      soil_moisture_summer ← sentinel1_sar_anomaly (0–1, already normalised)
       jrc_occurrence       ← SAR anomaly × 100
-      slope_degrees        ← DEM slope from telemetry
+      slope_degrees        ← dem_slope_deg
       elevation            ← elevation_m
       catchment_area_km2   ← catchment_area_km2
-      distance_to_river_m  ← 500 m default (no river-distance in cached data)
+      distance_to_river_m  ← 500 m default (not stored in cached data)
     """
     sat = spring.get('satellite', {}) or {}
     ndwi = float(sat.get('sentinel2_ndwi') or 0.0)
@@ -92,9 +98,13 @@ def spring_to_satellite_data(spring: dict) -> dict:
     elevation = float(spring.get('elevation_m') or 0.0)
     catchment = float(spring.get('catchment_area_km2') or 5.0)
 
+    # Use actual NDVI dry/wet when present; fall back to NDWI approximation
+    ndvi_dry = float(sat.get('ndvi_dry') or ndwi or 0.0)
+    ndvi_wet = float(sat.get('ndvi_wet') or (ndwi * 1.18) or 0.0)
+
     return {
-        'ndvi_dry':            round(min(0.95, max(0.0, ndwi)), 3),
-        'ndvi_wet':            round(min(0.95, max(0.0, ndwi * 1.18)), 3),
+        'ndvi_dry':            round(min(0.95, max(0.0, ndvi_dry)), 3),
+        'ndvi_wet':            round(min(0.95, max(0.0, ndvi_wet)), 3),
         'soil_moisture_summer': round(min(1.0, max(0.0, sar)), 3),
         'jrc_occurrence':      round(min(100.0, max(0.0, sar * 100.0)), 1),
         'slope_degrees':       slope,

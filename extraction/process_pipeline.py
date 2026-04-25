@@ -185,12 +185,18 @@ def infer_drainage_basin(lat: float, lon: float) -> str:
 
 # ── SATELLITE GRID LOADER ─────────────────────────────────────────────────────
 
-def load_sat_grid(csv_path: str) -> dict:
-    """Return dict: (lat_r2, lon_r2) → {VV, VH, NDVI, NDWI, NDRE}
-    preferring the 1y period row for each cell."""
+def load_sat_grid(csv_path: str) -> tuple:
+    """
+    Returns (sep_grid, jun_grid) — one dict per season, each mapping
+    (lat_r2, lon_r2) → {VV, VH, NDVI, NDWI, NDRE}.
+
+    Sep grid = dry-season composite (prefer sep_2025 → sep_2024 → sep_2023).
+    Jun grid = wet-season composite (prefer jun_2025 → jun_2024 → jun_2023).
+    Both are needed so spring_detector gets true ndvi_dry (Sep) and ndvi_wet (Jun).
+    """
     if not os.path.exists(csv_path):
-        print(f'  [INFO] satellite_grid.csv not found — SAR/NDWI from confidence proxy')
-        return {}
+        print(f'  [INFO] satellite_grid.csv not found — using confidence proxies')
+        return {}, {}
 
     raw: dict = defaultdict(list)
     with open(csv_path, newline='', encoding='utf-8') as f:
@@ -202,22 +208,27 @@ def load_sat_grid(csv_path: str) -> dict:
             except (ValueError, KeyError):
                 continue
 
-    # Prefer September (end-of-dry-season = permanent water bodies only)
-    pref = ['sep_2025', 'sep_2024', 'sep_2023', 'jun_2025', 'jun_2024', 'jun_2023']
-    grid = {}
-    for key, rows in raw.items():
-        chosen = next(
-            (r for p in pref for r in rows if r.get('period') == p),
-            rows[0],
-        )
-        grid[key] = {
-            k: (float(v) if v not in ('', 'None', None) else None)
-            for k, v in chosen.items()
-            if k not in ('lat', 'lon', 'period')
-        }
+    def _build_season(period_prefs):
+        grid = {}
+        for key, rows in raw.items():
+            chosen = next(
+                (r for p in period_prefs for r in rows if r.get('period') == p),
+                None,
+            )
+            if chosen is None:
+                continue
+            grid[key] = {
+                k: (float(v) if v not in ('', 'None', None) else None)
+                for k, v in chosen.items()
+                if k not in ('lat', 'lon', 'period')
+            }
+        return grid
 
-    print(f'  [SAT GRID] {len(grid)} cells loaded from {csv_path}')
-    return grid
+    sep_grid = _build_season(['sep_2025', 'sep_2024', 'sep_2023'])
+    jun_grid = _build_season(['jun_2025', 'jun_2024', 'jun_2023'])
+
+    print(f'  [SAT GRID] {len(sep_grid)} Sep cells, {len(jun_grid)} Jun cells  ({csv_path})')
+    return sep_grid, jun_grid
 
 
 def nearest_grid_cell(lat: float, lon: float, grid: dict, max_km: float = 45.0):
@@ -280,7 +291,7 @@ def link_villages(village_features: list, spring_locs: list) -> tuple:
 
 # ── CORE BUILD ────────────────────────────────────────────────────────────────
 
-def build_outputs(springs_raw: list, sat_grid: dict,
+def build_outputs(springs_raw: list, sat_grid_sep: dict, sat_grid_jun: dict,
                   village_feats: list, max_springs: int) -> tuple:
     """
     Returns (springs_json_list, geojson_features_list).
@@ -307,10 +318,14 @@ def build_outputs(springs_raw: list, sat_grid: dict,
             haversine_km(lat, lon, lat + 0.01, lon + 0.01), 2)
         cost_eur    = int(sp.get('cost_eur') or 150_000)
 
-        # ── Satellite enrichment ─────────────────────────────────────────
-        sat_row    = nearest_grid_cell(lat, lon, sat_grid)
-        vv         = sat_row.get('VV') if sat_row else None
-        ndwi_raw   = sat_row.get('NDWI') if sat_row else None
+        # ── Satellite enrichment (Sep = dry season, Jun = wet season) ────
+        sat_sep = nearest_grid_cell(lat, lon, sat_grid_sep)
+        sat_jun = nearest_grid_cell(lat, lon, sat_grid_jun)
+
+        vv       = sat_sep.get('VV')   if sat_sep else None
+        ndwi_raw = sat_sep.get('NDWI') if sat_sep else None
+        ndvi_sep_raw = sat_sep.get('NDVI') if sat_sep else None  # dry-season NDVI
+        ndvi_jun_raw = sat_jun.get('NDVI') if sat_jun else None  # wet-season NDVI
 
         # Fall back to confidence-derived proxies when no grid data
         sar_val  = (sar_anomaly(vv)
@@ -319,6 +334,13 @@ def build_outputs(springs_raw: list, sat_grid: dict,
         ndwi_val = (ndwi_clamp(ndwi_raw)
                     if ndwi_raw is not None
                     else round(clamp((confidence - 60) / 45, 0.05, 0.85), 2))
+        # NDVI dry/wet — use actual values when available, else estimate from confidence
+        ndvi_dry_val = (ndwi_clamp(ndvi_sep_raw)
+                        if ndvi_sep_raw is not None
+                        else round(clamp((confidence - 60) / 45, 0.05, 0.85), 2))
+        ndvi_wet_val = (ndwi_clamp(ndvi_jun_raw)
+                        if ndvi_jun_raw is not None
+                        else round(clamp((confidence - 50) / 45, 0.10, 0.90), 2))
 
         # ── Derived fields ───────────────────────────────────────────────
         reserve  = estimate_reserve(area_km2, elevation_m, sat_row)
@@ -341,6 +363,8 @@ def build_outputs(springs_raw: list, sat_grid: dict,
             'satellite': {
                 'sentinel1_sar_anomaly': sar_val,
                 'sentinel2_ndwi':        ndwi_val,
+                'ndvi_dry':              ndvi_dry_val,
+                'ndvi_wet':              ndvi_wet_val,
                 'dem_slope_deg':         slope_from_elevation(elevation_m),
                 'last_pass_utc':         sentinel_last_pass(lon),
                 'orbit_direction':       orbit_direction(lat, lon),
@@ -419,7 +443,7 @@ def main():
 
     # 2 — Load satellite grid ─────────────────────────────────────────────────
     print(f'\n[LOAD] {IN_SAT_GRID}')
-    sat_grid = load_sat_grid(IN_SAT_GRID)
+    sat_grid_sep, sat_grid_jun = load_sat_grid(IN_SAT_GRID)
 
     # 3 — Load villages ───────────────────────────────────────────────────────
     print(f'\n[LOAD] {IN_VILLAGES}')
@@ -428,7 +452,7 @@ def main():
     # 4 — Build output ────────────────────────────────────────────────────────
     print(f'\n[PROCESS] Building frontend files (max {args.max_springs} springs) ...')
     springs_json, geo_features = build_outputs(
-        springs_raw, sat_grid, villages, args.max_springs)
+        springs_raw, sat_grid_sep, sat_grid_jun, villages, args.max_springs)
 
     n_springs  = sum(1 for f in geo_features
                      if f['properties'].get('feature_type') == 'spring')

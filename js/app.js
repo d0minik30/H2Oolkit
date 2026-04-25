@@ -200,10 +200,150 @@ async function geocodeSearch(q, results) {
   }
 }
 
-function flyTo(lat, lon, name) {
-  leafletMap.flyTo([lat, lon], 13, { duration: 1.4 });
+async function flyTo(lat, lon, name) {
+  leafletMap.flyTo([parseFloat(lat), parseFloat(lon)], 13, { duration: 1.4 });
   document.getElementById('location-results').style.display = 'none';
   document.getElementById('location-search').value = name;
+
+  if (!(await H2O.checkBackend())) return;
+  runLocationAnalysis(parseFloat(lat), parseFloat(lon), name);
+}
+
+async function runLocationAnalysis(lat, lon, name) {
+  setBackendStatus('working', 'Scanning water sources…');
+  document.getElementById('detail-panel').innerHTML = `
+    <div class="dp-header">
+      <div>
+        <div class="dp-title">${name}</div>
+        <div class="dp-sub">Scanning 10 km radius for water sources…</div>
+      </div>
+    </div>
+    <p class="live-loading" style="padding:16px">Querying OSM, elevation &amp; precipitation data…</p>`;
+
+  try {
+    const result = await H2O.analyzeLocation({ lat, lon, name, radius_m: 5000 });
+    document.getElementById('detail-panel').innerHTML = renderLocationAnalysis(result);
+    setBackendStatus('online', 'Scan complete');
+  } catch (err) {
+    document.getElementById('detail-panel').innerHTML = `
+      <div class="dp-section live-analysis-warn" style="padding:16px">
+        <div class="dp-section-label">Location Analysis</div>
+        <p>Failed: ${err.message}</p>
+      </div>`;
+    setBackendStatus('error', 'Scan failed');
+  }
+}
+
+function renderLocationAnalysis(r) {
+  const loc    = r.query_location ?? {};
+  const best   = r.best_option;
+  const alts   = r.alternatives ?? [];
+  const ranked = r.ranked_sources ?? [];
+  const wx     = r.weather ?? {};
+  const fmtEur = n => '€' + (n ?? 0).toLocaleString('de-DE');
+  const fmtL   = n => (n ?? 0).toLocaleString() + ' L/day';
+
+  const supplyColor = s =>
+    s === 'viable' ? '#059669' : s === 'marginal' ? '#b45309' : '#dc2626';
+
+  const sourceRows = ranked.slice(0, 8).map((src, i) => {
+    const c = src.cost ?? {};
+    const rt = src.route ?? {};
+    const feasColor = supplyColor(c.feasibility);
+    return `
+      <div class="vc-row" style="align-items:flex-start;padding:8px 0;border-bottom:1px solid var(--border)">
+        <div class="vc-dot" style="background:${i === 0 ? '#059669' : '#2563eb'};margin-top:4px"></div>
+        <div class="vc-info" style="flex:1;min-width:0">
+          <div class="vc-name" style="font-weight:600">#${i + 1} ${src.name ?? src.source_type}
+            <span class="vc-county" style="text-transform:capitalize">${src.source_type}</span>
+          </div>
+          <div style="font-size:.75rem;color:var(--text-muted);margin-top:2px">
+            ${rt.terrain_adjusted_distance_km?.toFixed(1) ?? '?'} km &middot;
+            Δ${rt.elevation_difference_m?.toFixed(0) ?? '?'} m &middot;
+            ${(src.supply_method ?? '').replace(/_/g, ' ')}
+          </div>
+          <div style="font-size:.75rem;margin-top:2px">
+            Flow: <b>${fmtL(src.estimated_daily_flow_liters)}</b> &nbsp;|&nbsp;
+            Cost: <b>${fmtEur(c.total_cost_eur)}</b>
+            ${c.pnrr_eligible ? ` <span style="color:#059669">(PNRR −85%)</span>` : ''}
+          </div>
+        </div>
+        <div style="flex-shrink:0;text-align:right">
+          <div style="font-size:.78rem;font-weight:700;color:${feasColor}">${(c.feasibility ?? '—').replace(/_/g, ' ')}</div>
+          <div style="font-size:.72rem;color:var(--text-muted)">${((src.efficiency_score ?? 0) * 100).toFixed(0)}% score</div>
+        </div>
+      </div>`;
+  }).join('');
+
+  const noSources = ranked.length === 0 ? `
+    <p style="color:#dc2626;font-size:.83rem;padding:8px 0">
+      No water sources found within 10 km. Try a different location or expand the radius.
+    </p>` : '';
+
+  return `
+    <div class="dp-header">
+      <div>
+        <div class="dp-title">${loc.name ?? 'Location Analysis'}</div>
+        <div class="dp-sub">${loc.lat?.toFixed(4)}° N, ${loc.lon?.toFixed(4)}° E &middot; 10 km scan radius</div>
+      </div>
+      <span class="sbadge sbadge-${ranked.length > 0 ? 'verified' : 'pending'}">
+        ${r.sources_found ?? 0} sources
+      </span>
+    </div>
+
+    ${best ? `
+    <div class="dp-section">
+      <div class="dp-section-label">Best Candidate</div>
+      <div class="sat-grid">
+        <div class="sat-cell">
+          <div class="sat-lbl">Source</div>
+          <div class="sat-val" style="text-transform:capitalize">${best.source_type}</div>
+        </div>
+        <div class="sat-cell">
+          <div class="sat-lbl">Daily Flow</div>
+          <div class="sat-val">${fmtL(best.estimated_daily_flow_liters)}</div>
+        </div>
+        <div class="sat-cell">
+          <div class="sat-lbl">Distance</div>
+          <div class="sat-val">${best.route?.terrain_adjusted_distance_km?.toFixed(1) ?? '?'} km</div>
+        </div>
+        <div class="sat-cell">
+          <div class="sat-lbl">Supply</div>
+          <div class="sat-val" style="color:${supplyColor(best.cost?.feasibility)};text-transform:capitalize">
+            ${(best.cost?.feasibility ?? '—').replace(/_/g, ' ')}
+          </div>
+        </div>
+        <div class="sat-cell">
+          <div class="sat-lbl">Total Cost</div>
+          <div class="sat-val">${fmtEur(best.cost?.total_cost_eur)}</div>
+        </div>
+        <div class="sat-cell">
+          <div class="sat-lbl">Village Pays</div>
+          <div class="sat-val">${fmtEur(best.cost?.village_contribution_eur)}</div>
+        </div>
+      </div>
+    </div>` : ''}
+
+    <div class="dp-section">
+      <div class="dp-section-label">Ranked Water Sources</div>
+      ${noSources}
+      ${sourceRows}
+    </div>
+
+    <div class="dp-section">
+      <div class="dp-section-label">Climate</div>
+      <div class="coord-grid">
+        <div class="coord-item"><div class="coord-lbl">Mean Precip.</div>
+          <div class="coord-val">${(wx.mean_annual_precipitation_mm ?? 0).toFixed(0)} mm/yr</div></div>
+        <div class="coord-item"><div class="coord-lbl">Recharge</div>
+          <div class="coord-val">${(wx.estimated_recharge_mm ?? 0).toFixed(0)} mm</div></div>
+        <div class="coord-item"><div class="coord-lbl">Trend</div>
+          <div class="coord-val">${(wx.trend_mm_per_year ?? 0).toFixed(1)} mm/yr</div></div>
+      </div>
+    </div>
+
+    <p class="live-recommendation">${r.recommendation ?? ''}</p>
+  `;
 }
 
 /* ── DETAIL PANEL ────────────────────────────────── */
