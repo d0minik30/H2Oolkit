@@ -32,7 +32,7 @@ body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--bg); colo
 /* ── NAVBAR ──────────────────────────────────────── */
 .navbar {
   position: sticky; top: 0; z-index: 2000;
-  height: 56px; background: #fff; border-bottom: 1px solid var(--border);
+  height: 56px; background: var(--card); border-bottom: 1px solid var(--border);
   display: flex; align-items: center; padding: 0 24px;
   justify-content: space-between; box-shadow: var(--sh-sm);
 }
@@ -253,7 +253,7 @@ table.dtbl { width: 100%; border-collapse: collapse; font-size: .79rem; }
 .dtbl thead th { padding: 8px 13px; text-align: left; font-size: .62rem; text-transform: uppercase; letter-spacing: .08em; color: var(--text-muted); font-weight: 700; background: var(--bg); border-bottom: 1px solid var(--border); white-space: nowrap; }
 .dtbl tbody tr { border-bottom: 1px solid var(--border); transition: background .12s; cursor: pointer; }
 .dtbl tbody tr:last-child { border-bottom: none; }
-.dtbl tbody tr:hover { background: #f8fafc; }
+.dtbl tbody tr:hover { background: var(--bg); }
 .dtbl tbody tr.active-row { background: var(--accent-dim) !important; box-shadow: inset 3px 0 0 var(--accent); }
 .dtbl td { padding: 10px 13px; color: var(--text-sub); white-space: nowrap; }
 .dtbl td.id-col { font-family: 'Courier New', monospace; font-size: .7rem; color: var(--text-muted); }
@@ -467,6 +467,16 @@ body:not(.landing) .mos-hero { display: none; }
 html:not(.dark) .icon-moon { display:none; }
 html.dark .icon-sun { display:none; }
 html.dark { --bg:#0f172a; --card:#1e293b; --border:#334155; --border-2:#475569; --text:#f1f5f9; --text-sub:#cbd5e1; --text-muted:#64748b; --sh-sm:0 1px 3px rgba(0,0,0,.3); --sh-md:0 4px 12px rgba(0,0,0,.4); --sh-lg:0 10px 28px rgba(0,0,0,.5); }
+html.dark .mos-input { background: rgba(30,41,59,.97); border-color: rgba(255,255,255,.15); color: var(--text); }
+html.dark .mos-results { background: var(--card); }
+html.dark .mos-item:hover { background: var(--border); }
+html.dark .map-legend { background: rgba(30,41,59,.95); }
+html.dark .dp-ph-line { background: linear-gradient(90deg, var(--border) 25%, var(--border-2) 50%, var(--border) 75%); background-size: 1400px 100%; }
+html.dark .leaflet-popup-content-wrapper { background: var(--card) !important; color: var(--text) !important; border-color: var(--border) !important; }
+html.dark .leaflet-popup-tip { background: var(--card) !important; }
+html.dark .leaflet-control-zoom a { background: var(--card) !important; color: var(--text-sub) !important; border-color: var(--border) !important; }
+html.dark .leaflet-control-zoom a:hover { background: var(--border) !important; }
+html.dark .leaflet-control-attribution { background: rgba(15,23,42,.88) !important; color: var(--text-muted) !important; }
 
 /* ── VILLAGE MARKER ──────────────────────────────── */
 .vm-marker {
