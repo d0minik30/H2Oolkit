@@ -361,12 +361,24 @@ def fetch_hydrolakes(lat: float, lon: float, radius_km: float, csv_path: str) ->
 
 # ── SOURCE 2: COPERNICUS GEE ──────────────────────────────────────────────────
 def fetch_sentinel_gee(lat: float, lon: float, radius_km: float,
-                        period: str = '1y') -> list:
+                        period: str = 'all') -> list:
     print('[GEE] Sentinel-1/2 water detection ...')
 
-    _S2_START = {'6m': '2024-10-01', '1y': '2024-04-01', '10y': '2015-01-01'}
-    _S2_END   = '2025-04-01'
-    s2_start  = _S2_START.get(period, '2024-04-01')
+    # June = peak snowmelt / high water; September = end-of-dry-season permanent water only.
+    # Using all three years of each month for a robust multi-year composite.
+    _PERIOD_CFG = {
+        'jun': ('2023-06-01', '2025-07-01', [6]),
+        'sep': ('2023-09-01', '2025-10-01', [9]),
+        'all': ('2023-06-01', '2025-10-01', [6, 9]),
+    }
+    s2_start, _S2_END, _months = _PERIOD_CFG.get(period, _PERIOD_CFG['all'])
+
+    # Restrict composite to the target calendar months only
+    if len(_months) == 1:
+        _month_filter = ee.Filter.calendarRange(_months[0], _months[0], 'month')
+    else:
+        _month_filter = ee.Filter.Or(
+            *[ee.Filter.calendarRange(m, m, 'month') for m in _months])
 
     south, west, north, east = bbox(lat, lon, radius_km)
     roi = ee.Geometry.Rectangle([west, south, east, north])
@@ -378,6 +390,7 @@ def fetch_sentinel_gee(lat: float, lon: float, radius_km: float,
             ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
             .filterDate(s2_start, _S2_END)
             .filterBounds(roi)
+            .filter(_month_filter)
             .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 20))
         )
         s2_mndwi = (s2_col
@@ -391,6 +404,7 @@ def fetch_sentinel_gee(lat: float, lon: float, radius_km: float,
             ee.ImageCollection('COPERNICUS/S1_GRD')
             .filterDate(s2_start, _S2_END)
             .filterBounds(roi)
+            .filter(_month_filter)
             .filter(ee.Filter.eq('instrumentMode', 'IW'))
             .filter(ee.Filter.listContains('transmitterReceiverPolarisation', 'VV'))
             .select('VV')
@@ -567,8 +581,8 @@ def main():
     parser.add_argument('--sources',  choices=['all', 'database', 'satellite'],
                         default='all',
                         help='Which sources to query (default: all)')
-    parser.add_argument('--period',   choices=['6m', '1y', '10y'], default='1y',
-                        help='Sentinel date window (default: 1y)')
+    parser.add_argument('--period',   choices=['jun', 'sep', 'all'], default='all',
+                        help='Seasonal window: jun=June 2023-25, sep=September 2023-25, all=both (default: all)')
     parser.add_argument('--hydrolakes-csv', dest='hl_csv', default=HL_CSV_DEFAULT,
                         help='Path to HydroLAKES Europe CSV')
     parser.add_argument('--no-elevation', action='store_true',

@@ -18,7 +18,7 @@ import os
 import sys
 import argparse
 import csv
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 # ── CONFIG ────────────────────────────────────────────────────────────────────
 PROJECT_ID   = 'h2oolkit-hackathon'
@@ -31,12 +31,13 @@ CLOUD_PCT    = 30           # max cloud cover % for Sentinel-2 scenes
 _ROOT = os.path.join(os.path.dirname(__file__), '..')
 OUT_CSV = os.path.normpath(os.path.join(_ROOT, 'data', 'satellite_grid.csv'))
 
-TODAY = datetime.now(timezone.utc)
-
 PERIODS = {
-    '6m':  (TODAY - timedelta(days=183),  TODAY),
-    '1y':  (TODAY - timedelta(days=365),  TODAY),
-    '10y': (TODAY - timedelta(days=3650), TODAY),
+    'jun_2023': (datetime(2023, 6, 1, tzinfo=timezone.utc), datetime(2023, 7,  1, tzinfo=timezone.utc)),
+    'sep_2023': (datetime(2023, 9, 1, tzinfo=timezone.utc), datetime(2023, 10, 1, tzinfo=timezone.utc)),
+    'jun_2024': (datetime(2024, 6, 1, tzinfo=timezone.utc), datetime(2024, 7,  1, tzinfo=timezone.utc)),
+    'sep_2024': (datetime(2024, 9, 1, tzinfo=timezone.utc), datetime(2024, 10, 1, tzinfo=timezone.utc)),
+    'jun_2025': (datetime(2025, 6, 1, tzinfo=timezone.utc), datetime(2025, 7,  1, tzinfo=timezone.utc)),
+    'sep_2025': (datetime(2025, 9, 1, tzinfo=timezone.utc), datetime(2025, 10, 1, tzinfo=timezone.utc)),
 }
 
 # ── AUTH ──────────────────────────────────────────────────────────────────────
