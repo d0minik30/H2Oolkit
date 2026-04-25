@@ -231,59 +231,52 @@ function enterAreaFocused(lat, lon, radiusKm = 10, village = null) {
 
 /* ── LOCATION SEARCH (map geocoding) ─────────────── */
 
-const SEARCH_SUGGESTIONS = [
-  { label: 'Harghita County',  sub: 'Mineral springs · Eastern Carpathians' },
-  { label: 'Neamț County',     sub: 'Carpathian mountain water sources' },
-  { label: 'Covasna County',   sub: 'Known for mineral spring water' },
-  { label: 'Bacău County',     sub: 'Moldavian spring sources' },
-  { label: 'Vrancea County',   sub: 'Eastern Carpathian spring belt' },
-  { label: 'Suceava County',   sub: 'Northern Moldavian springs' },
-];
-
 function getRecentSearches() {
   try { return JSON.parse(localStorage.getItem('h2o_recent') || '[]'); }
   catch { return []; }
 }
 
-function addRecentSearch(name) {
-  const recents = getRecentSearches().filter(r => r !== name);
-  recents.unshift(name);
+function addRecentSearch(entry) {
+  const recents = getRecentSearches().filter(r => r.name !== entry.name);
+  recents.unshift(entry);
   localStorage.setItem('h2o_recent', JSON.stringify(recents.slice(0, 5)));
 }
 
+function _villageOnclick(id, name) {
+  return `selectVillageById('${id}');` +
+    `document.getElementById('location-results').style.display='none';` +
+    `document.getElementById('location-search').value='${name.replace(/'/g, "\\'")}';`;
+}
+
 function renderSuggestions(results) {
-  const recents = getRecentSearches();
+  const recents  = getRecentSearches();
   const clockSvg = `<svg class="mos-pin mos-pin-outline" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`;
-  const pinSvg   = `<svg class="mos-pin" viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/></svg>`;
+  const homeSvg  = `<svg class="mos-pin" viewBox="0 0 24 24" style="fill:#f59e0b"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>`;
 
   let html = '';
 
   if (recents.length) {
     html += `<div class="mos-section-label">Recent searches</div>`;
-    recents.forEach(name => {
-      const safe = name.replace(/'/g, "\\'");
-      html += `<div class="mos-item" onclick="triggerSearchFor('${safe}')">${clockSvg}<div class="mos-name">${name}</div></div>`;
+    recents.forEach(r => {
+      const onclick = r.id
+        ? _villageOnclick(r.id, r.name)
+        : `flyToArea(${r.lat},${r.lon},'${r.name.replace(/'/g, "\\'")}');`;
+      html += `<div class="mos-item" onclick="${onclick}">${clockSvg}<div class="mos-name">${r.name}</div></div>`;
     });
-    html += `<div class="mos-section-label">Suggested areas</div>`;
+    html += `<div class="mos-section-label">All villages</div>`;
   } else {
-    html += `<div class="mos-section-label">Try searching for</div>`;
+    html += `<div class="mos-section-label">Villages</div>`;
   }
 
-  SEARCH_SUGGESTIONS.forEach(s => {
-    const safe = s.label.replace(/'/g, "\\'");
-    html += `<div class="mos-item" onclick="triggerSearchFor('${safe}')">${pinSvg}<div><div class="mos-name">${s.label}</div><div class="mos-region">${s.sub}</div></div></div>`;
+  _allVillages.forEach(v => {
+    html += `<div class="mos-item mos-village-hit" onclick="${_villageOnclick(v.id, v.name)}">
+      ${homeSvg}
+      <div><div class="mos-name">${v.name}</div><div class="mos-region">${v.county} County &middot; ${v.population.toLocaleString()} residents</div></div>
+    </div>`;
   });
 
   results.innerHTML = html;
   results.style.display = 'block';
-}
-
-function triggerSearchFor(name) {
-  const input   = document.getElementById('location-search');
-  const results = document.getElementById('location-results');
-  input.value = name;
-  input.focus();
-  geocodeSearch(name, results);
 }
 
 function initLocationSearch() {
@@ -311,7 +304,20 @@ function initLocationSearch() {
     timer = setTimeout(() => geocodeSearch(q, results), 340);
   });
 
-  input.addEventListener('keydown', e => {
+  input.addEventListener('keydown', async e => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const q = input.value.trim();
+      const firstVisible = results.style.display !== 'none' && results.querySelector('.mos-item');
+      if (firstVisible) {
+        firstVisible.click();
+      } else if (q.length >= 2) {
+        await geocodeSearch(q, results);
+        const first = results.querySelector('.mos-item');
+        if (first) first.click();
+      }
+      return;
+    }
     if (e.key === 'Escape') {
       results.style.display = 'none';
       input.value = '';
@@ -380,7 +386,7 @@ async function geocodeSearch(q, results) {
 function selectVillageById(id) {
   const v = _allVillages.find(v => v.id === id);
   if (!v) return;
-  addRecentSearch(v.name);
+  addRecentSearch({ name: v.name, id: v.id });
   exitLandingMode();
   leafletMap.flyTo([v.lat, v.lon], 13, { duration: 0.9 });
   document.getElementById('location-results').style.display = 'none';
@@ -407,7 +413,7 @@ function selectVillageById(id) {
 }
 
 function flyToArea(lat, lon, name) {
-  addRecentSearch(name);
+  addRecentSearch({ name, lat: parseFloat(lat), lon: parseFloat(lon) });
   const la = parseFloat(lat), lo = parseFloat(lon);
   exitLandingMode();
   leafletMap.flyTo([la, lo], 11, { duration: 1.2 });
