@@ -456,7 +456,7 @@ table.dtbl { width: 100%; border-collapse: collapse; font-size: .79rem; }
 .mos-region { font-size:.7rem; color:var(--text-muted); margin-top:1px; }
 .mos-no-result { padding:12px 14px; font-size:.8rem; color:var(--text-muted); text-align:center; }
 .mos-hero { text-align: center; margin-bottom: 20px; }
-.mos-hero-title { font-size: 1.65rem; font-weight: 800; color: #fff; margin-bottom: 8px; text-shadow: 0 2px 14px rgba(0,0,0,.55); letter-spacing: -.03em; line-height: 1.2; }
+.mos-hero-title { font-size: 1.65rem; font-weight: 800; margin-bottom: 8px; letter-spacing: -.03em; line-height: 1.2; }
 .mos-hero-sub { font-size: .8rem; color: rgba(255,255,255,.85); text-shadow: 0 1px 6px rgba(0,0,0,.45); line-height: 1.5; }
 body:not(.landing) .mos-hero { display: none; }
 
@@ -988,3 +988,66 @@ body.landing .mos-input { height: 50px; font-size: .92rem; }
 
 body.landing .detail-panel { overflow: hidden; opacity: 0; padding: 0; }
 body:not(.landing) .detail-panel { opacity: 1; }
+
+/* ── WATER TOUCHES ───────────────────────────────── */
+
+/* Logo drop — gently bobs */
+.logo-drop {
+  width: 15px; height: 15px;
+  fill: #0ea5e9;
+  flex-shrink: 0;
+  animation: drop-bob 3.2s ease-in-out infinite;
+}
+@keyframes drop-bob {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50%       { transform: translateY(-3px) scale(1.08); }
+}
+
+/* Navbar — thin flowing water line */
+.navbar { position: relative; }
+.navbar::after {
+  content: '';
+  position: absolute;
+  bottom: 0; left: 0; right: 0; height: 2px;
+  background: linear-gradient(90deg, transparent 0%, #0ea5e9 25%, #2563eb 50%, #0ea5e9 75%, transparent 100%);
+  background-size: 200% 100%;
+  animation: nav-flow 5s ease-in-out infinite;
+  opacity: 0;
+  transition: opacity .4s ease;
+}
+body:not(.landing) .navbar::after { opacity: 0.45; }
+@keyframes nav-flow {
+  0%   { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+
+/* Landing hero title — slow water shimmer */
+.mos-hero-title {
+  background: linear-gradient(90deg, #fff 0%, #bfdbfe 30%, #93c5fd 50%, #bfdbfe 70%, #fff 100%);
+  background-size: 250% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 2px 14px rgba(0,0,0,.55));
+  animation: title-shimmer 6s linear infinite;
+}
+@keyframes title-shimmer {
+  0%   { background-position: 0% center; }
+  100% { background-position: 250% center; }
+}
+
+/* Landing wave — two layers drift at different speeds */
+.landing-wave {
+  position: absolute;
+  bottom: 0; left: -5%; width: 110%;
+  z-index: 1400; pointer-events: none;
+  opacity: 0;
+  transition: opacity .6s ease;
+}
+body.landing .landing-wave { opacity: 1; }
+.lw-1 { animation: wave-drift 8s ease-in-out infinite alternate; transform-origin: center bottom; }
+.lw-2 { animation: wave-drift 11s ease-in-out infinite alternate-reverse; transform-origin: center bottom; }
+@keyframes wave-drift {
+  from { transform: translateX(0%); }
+  to   { transform: translateX(5%); }
+}
