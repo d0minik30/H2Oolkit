@@ -704,22 +704,7 @@ async function init() {
   renderVillageSelectPanel();
   renderCommunitiesPanel(_allVillages);
   renderSourcesPanel(_allSprings);
-  renderTable(_allSprings);
-  renderAnalysis(_allSprings, _allVillages);
   initLocationSearch();
-
-  const input = document.getElementById('search-input');
-  const clearBtn = document.getElementById('search-clear');
-  input.addEventListener('input', () => {
-    clearBtn.style.display = input.value ? 'flex' : 'none';
-    updateSearch(input.value);
-  });
-  clearBtn.addEventListener('click', () => {
-    input.value = ''; clearBtn.style.display = 'none'; input.focus(); updateSearch('');
-  });
-  input.addEventListener('keydown', e => {
-    if (e.key === 'Escape') { input.value = ''; clearBtn.style.display = 'none'; updateSearch(''); input.blur(); }
-  });
 }
 
 init();
