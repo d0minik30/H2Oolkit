@@ -53,7 +53,6 @@ function feasLabel(score) {
   return 'Very Low';
 }
 
-function fmtCost(n) { return '€' + Math.round(n).toLocaleString('de-DE'); }
 function fmtNum(n)  { return Math.round(n).toLocaleString('de-DE'); }
 
 function haversineKm(lat1, lon1, lat2, lon2) {
@@ -473,8 +472,8 @@ function renderDetailPanel(src) {
     ? `<span class="dp-eu-badge dp-eu-off">Not in EU-Hydro</span>`
     : '';
 
-  const pnrr = cost.pnrr_eligible
-    ? `<span class="dp-eu-badge dp-eu-ok">PNRR eligible</span>` : '';
+  const pumping = cost.needs_pumping
+    ? `<span class="dp-eu-badge dp-eu-off">Requires pump</span>` : `<span class="dp-eu-badge dp-eu-ok">Gravity-fed</span>`;
 
   document.getElementById('detail-panel').innerHTML = `
     <div class="dp-header">
@@ -485,7 +484,7 @@ function renderDetailPanel(src) {
         </div>
         <div class="dp-sub">
           ${escapeHtml(_currentLocationName)} &middot; ${TYPE_LABEL[src.source_type] ?? src.source_type}
-          ${euBadge} ${pnrr}
+          ${euBadge} ${pumping}
         </div>
       </div>
       <button class="dp-back-btn" onclick="returnToPointSelect()">&#8592; Re-pick</button>
@@ -532,20 +531,14 @@ function renderDetailPanel(src) {
       <div class="dp-supply-method">${escapeHtml(supplyMethod || 'unknown')}</div>
     </div>
 
-    ${cost.total_cost_eur != null ? `
+    ${cost.pipeline_km != null ? `
     <div class="dp-section">
-      <div class="dp-section-label">Infrastructure Cost</div>
-      <div class="dp-cost-total">${fmtCost(cost.total_cost_eur)}</div>
+      <div class="dp-section-label">Pipeline</div>
       <div class="dp-cost-breakdown">
-        <div class="dp-cost-row"><span>Pipeline</span><span>${fmtCost(cost.breakdown_eur?.pipeline_eur ?? 0)}</span></div>
-        ${(cost.breakdown_eur?.pumping_eur ?? 0) > 0 ? `<div class="dp-cost-row"><span>Pumping</span><span>${fmtCost(cost.breakdown_eur.pumping_eur)}</span></div>` : ''}
-        <div class="dp-cost-row"><span>Treatment</span><span>${fmtCost(cost.breakdown_eur?.treatment_plant_eur ?? 0)}</span></div>
-        <div class="dp-cost-row"><span>Reservoir</span><span>${fmtCost(cost.breakdown_eur?.reservoir_eur ?? 0)}</span></div>
-        <div class="dp-cost-row"><span>Connections</span><span>${fmtCost(cost.breakdown_eur?.household_connections_eur ?? 0)}</span></div>
-        ${cost.pnrr_eligible ? `
-          <div class="dp-cost-row dp-cost-grant"><span>PNRR grant (85%)</span><span>− ${fmtCost(cost.pnrr_grant_eur ?? 0)}</span></div>
-          <div class="dp-cost-row dp-cost-village"><span>Village contribution</span><span>${fmtCost(cost.village_contribution_eur ?? 0)}</span></div>
-        ` : ''}
+        <div class="dp-cost-row"><span>Pipe run</span><span>${(+cost.pipeline_km).toFixed(2)} km</span></div>
+        ${cost.needs_pumping ? `<div class="dp-cost-row"><span>Feed type</span><span>Pumped (${Math.abs(cost.elevation_diff_m ?? 0).toFixed(0)} m lift)</span></div>` : `<div class="dp-cost-row"><span>Feed type</span><span>Gravity-fed</span></div>`}
+        <div class="dp-cost-row"><span>Reservoir</span><span>${cost.reservoir_m3 ?? '—'} m³</span></div>
+        <div class="dp-cost-row"><span>Supply cover</span><span>${cost.supply_covers_demand_pct ?? '?'}%</span></div>
       </div>
     </div>` : ''}
 
@@ -608,7 +601,7 @@ function renderSourcesPanel(ranked) {
     const distKm = sp.route?.terrain_adjusted_distance_km?.toFixed(2)
                 ?? (sp.distance_m / 1000).toFixed(2);
     const flowM3 = Math.round((sp.estimated_daily_flow_liters || 0) / 1000);
-    const costEur = sp.cost?.total_cost_eur;
+    const pipeKm = sp.cost?.pipeline_km != null ? (+sp.cost.pipeline_km).toFixed(1) + ' km pipe' : null;
     return `
     <div class="bm-src-row bm-src-row-clickable" id="srcc-${sp.id}"
          onclick="selectSourceById('${sp.id}')">
@@ -618,7 +611,7 @@ function renderSourcesPanel(ranked) {
         <div class="bm-src-name">${escapeHtml(sp.name)}</div>
         <div class="bm-src-meta">
           ${TYPE_LABEL[sp.source_type] ?? sp.source_type} &middot; ${distKm} km
-          ${costEur != null ? ' &middot; ' + fmtCost(costEur) : ''}
+          ${pipeKm != null ? ' &middot; ' + pipeKm : ''}
         </div>
         <div class="bm-src-bar-track"><div class="bm-src-bar-fill" style="width:${fs}%;background:${fc}"></div></div>
       </div>
@@ -650,7 +643,7 @@ function renderOverviewStats(result, ranked) {
         <span style="color:${bestCol};font-weight:800">${Math.round(best.feasibility_score ?? 0)} feasibility</span>
         <span>${(best.route?.terrain_adjusted_distance_km ?? 0).toFixed(2)} km</span>
         <span>${Math.round((best.estimated_daily_flow_liters ?? 0) / 1000)} m³/day</span>
-        ${best.cost?.total_cost_eur != null ? `<span>${fmtCost(best.cost.total_cost_eur)}</span>` : ''}
+        ${best.cost?.pipeline_km != null ? `<span>${(+best.cost.pipeline_km).toFixed(1)} km pipe</span>` : ''}
       </div>
     </div>
 
