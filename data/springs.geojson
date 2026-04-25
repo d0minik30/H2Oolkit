@@ -1,0 +1,135 @@
+{
+  "type": "FeatureCollection",
+  "name": "H2Oolkit Spring Sources",
+  "crs": {
+    "type": "name",
+    "properties": { "name": "urn:ogc:def:crs:OGC:1.3:CRS84" }
+  },
+  "metadata": {
+    "source": "Copernicus Sentinel-1 SAR + Sentinel-2 MSI",
+    "region": "Carpathian Arc — Romania",
+    "generated": "2026-04-24T06:00:00Z",
+    "coordinate_system": "WGS84"
+  },
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [26.82, 45.71]
+      },
+      "properties": {
+        "id": "SP-001",
+        "elevation_m": 342,
+        "geology_type": "limestone_karst",
+        "drainage_basin": "Putna",
+        "catchment_area_km2": 12.4,
+        "nearest_village": "Nereju",
+        "land_cover": "mixed_forest",
+        "aquifer_depth_m": 18
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [26.41, 45.38]
+      },
+      "properties": {
+        "id": "SP-002",
+        "elevation_m": 187,
+        "geology_type": "alluvial_gravel",
+        "drainage_basin": "Buzău",
+        "catchment_area_km2": 28.7,
+        "nearest_village": "Siriu",
+        "land_cover": "riparian_shrub",
+        "aquifer_depth_m": 8
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [25.54, 45.42]
+      },
+      "properties": {
+        "id": "SP-003",
+        "elevation_m": 621,
+        "geology_type": "crystalline_schist",
+        "drainage_basin": "Prahova",
+        "catchment_area_km2": 6.2,
+        "nearest_village": "Sinaia",
+        "land_cover": "coniferous_forest",
+        "aquifer_depth_m": 34
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [26.05, 45.86]
+      },
+      "properties": {
+        "id": "SP-004",
+        "elevation_m": 498,
+        "geology_type": "volcanic_tuff",
+        "drainage_basin": "Olt",
+        "catchment_area_km2": 19.1,
+        "nearest_village": "Bixad",
+        "land_cover": "meadow_grassland",
+        "aquifer_depth_m": 12
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [26.63, 46.21]
+      },
+      "properties": {
+        "id": "SP-005",
+        "elevation_m": 754,
+        "geology_type": "flysch_sandstone",
+        "drainage_basin": "Trotuș",
+        "catchment_area_km2": 4.8,
+        "nearest_village": "Moinești",
+        "land_cover": "alpine_pasture",
+        "aquifer_depth_m": 47
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [25.81, 46.37]
+      },
+      "properties": {
+        "id": "SP-006",
+        "elevation_m": 412,
+        "geology_type": "limestone_karst",
+        "drainage_basin": "Mureș",
+        "catchment_area_km2": 31.5,
+        "nearest_village": "Corund",
+        "land_cover": "mixed_forest",
+        "aquifer_depth_m": 9
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [25.22, 45.28]
+      },
+      "properties": {
+        "id": "SP-007",
+        "elevation_m": 891,
+        "geology_type": "granite_gneiss",
+        "drainage_basin": "Dâmbovița",
+        "catchment_area_km2": 8.3,
+        "nearest_village": "Câmpulung",
+        "land_cover": "subalpine_scrub",
+        "aquifer_depth_m": 26
+      }
+    }
+  ]
+}

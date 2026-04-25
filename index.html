@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+<!-- Serve via HTTP: npx serve . OR python -m http.server 8000 -->
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -7,443 +8,11 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-    :root {
-      --bg:          #0a0f1e;
-      --card:        #111827;
-      --card-2:      #0d1424;
-      --border:      #1f2937;
-      --border-2:    #2d3748;
-      --accent:      #3b82f6;
-      --accent-dim:  rgba(59,130,246,.12);
-      --accent-glow: rgba(59,130,246,.25);
-      --green:       #10b981;
-      --green-dim:   rgba(16,185,129,.12);
-      --orange:      #f59e0b;
-      --orange-dim:  rgba(245,158,11,.12);
-      --red:         #ef4444;
-      --red-dim:     rgba(239,68,68,.12);
-      --text:        #f9fafb;
-      --text-sub:    #9ca3af;
-      --text-muted:  #4b5563;
-    }
-
-    html { scroll-behavior: smooth; }
-
-    body {
-      font-family: 'Inter', sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      min-height: 100vh;
-      line-height: 1.5;
-      font-size: 14px;
-    }
-
-    /* ── SCROLLBAR ─────────────────────────────────── */
-    ::-webkit-scrollbar { width: 5px; height: 5px; }
-    ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 4px; }
-
-    /* ── NAVBAR ────────────────────────────────────── */
-    .navbar {
-      position: sticky; top: 0; z-index: 2000;
-      height: 58px;
-      background: rgba(10,15,30,.92);
-      backdrop-filter: blur(14px);
-      border-bottom: 1px solid var(--border);
-      display: flex; align-items: center;
-      padding: 0 24px;
-      justify-content: space-between;
-    }
-    .navbar-left { display: flex; align-items: center; gap: 28px; }
-
-    .logo {
-      display: flex; align-items: center; gap: 9px;
-      text-decoration: none; font-weight: 800; font-size: 1.15rem;
-      color: var(--text); letter-spacing: -.02em;
-    }
-    .logo-icon {
-      width: 34px; height: 34px;
-      background: linear-gradient(135deg, #2563eb 0%, #0ea5e9 100%);
-      border-radius: 9px;
-      display: flex; align-items: center; justify-content: center;
-      box-shadow: 0 0 18px rgba(37,99,235,.5);
-    }
-    .logo-icon svg { width: 18px; height: 18px; fill: #fff; }
-    .logo em { color: var(--accent); font-style: normal; }
-
-    .nav-links { display: flex; gap: 2px; list-style: none; }
-    .nav-links a {
-      color: var(--text-sub); text-decoration: none;
-      font-size: .82rem; font-weight: 500;
-      padding: 6px 12px; border-radius: 7px;
-      transition: all .18s;
-    }
-    .nav-links a:hover { color: var(--text); background: rgba(255,255,255,.05); }
-    .nav-links a.active { color: var(--accent); background: var(--accent-dim); }
-
-    .location-badge {
-      display: flex; align-items: center; gap: 6px;
-      background: var(--accent-dim);
-      border: 1px solid rgba(59,130,246,.22);
-      border-radius: 20px; padding: 4px 13px;
-      font-size: .75rem; font-weight: 600;
-      color: #93c5fd; white-space: nowrap;
-    }
-    .location-badge svg { width: 11px; height: 11px; fill: #60a5fa; }
-
-    /* ── MAIN ──────────────────────────────────────── */
-    .main { padding: 22px 24px 0; max-width: 1640px; margin: 0 auto; }
-
-    /* ── STAT CARDS ────────────────────────────────── */
-    .stats-grid {
-      display: grid;
-      grid-template-columns: repeat(4,1fr);
-      gap: 14px; margin-bottom: 18px;
-    }
-    .stat-card {
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: 12px; padding: 18px 20px;
-      display: flex; align-items: flex-start; gap: 15px;
-      transition: transform .2s, box-shadow .2s;
-      position: relative; overflow: hidden;
-    }
-    .stat-card::before {
-      content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
-      background: linear-gradient(90deg, var(--accent), transparent);
-      opacity: 0; transition: opacity .2s;
-    }
-    .stat-card:hover { transform: translateY(-2px); box-shadow: 0 10px 30px rgba(0,0,0,.35); }
-    .stat-card:hover::before { opacity: 1; }
-
-    .stat-icon {
-      width: 46px; height: 46px; border-radius: 10px;
-      display: flex; align-items: center; justify-content: center;
-      flex-shrink: 0;
-    }
-    .stat-icon svg { width: 22px; height: 22px; }
-
-    .stat-label {
-      font-size: .68rem; color: var(--text-muted);
-      text-transform: uppercase; letter-spacing: .07em;
-      font-weight: 600; margin-bottom: 4px;
-    }
-    .stat-value {
-      font-size: 1.65rem; font-weight: 800;
-      color: var(--text); line-height: 1;
-      letter-spacing: -.03em; margin-bottom: 9px;
-    }
-    .stat-value small { font-size: .85rem; font-weight: 500; letter-spacing: 0; }
-    .stat-tag {
-      display: inline-flex; align-items: center; gap: 4px;
-      background: var(--green-dim);
-      border: 1px solid rgba(16,185,129,.22);
-      color: var(--green); font-size: .68rem; font-weight: 700;
-      padding: 2px 8px; border-radius: 20px;
-    }
-
-    /* ── SPLIT LAYOUT ──────────────────────────────── */
-    .split-layout {
-      display: grid;
-      grid-template-columns: 60fr 40fr;
-      gap: 14px; margin-bottom: 18px;
-      height: 530px;
-    }
-
-    /* ── MAP CARD ──────────────────────────────────── */
-    .map-card {
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: 12px; overflow: hidden;
-      display: flex; flex-direction: column;
-    }
-    .map-header {
-      padding: 12px 16px; border-bottom: 1px solid var(--border);
-      display: flex; align-items: center; justify-content: space-between;
-      flex-shrink: 0;
-    }
-    .map-header-title {
-      font-size: .82rem; font-weight: 600; color: var(--text);
-      display: flex; align-items: center; gap: 7px;
-    }
-    .map-header-title svg { width: 14px; height: 14px; fill: var(--accent); }
-    .map-badges { display: flex; gap: 8px; align-items: center; }
-    .badge-live {
-      font-size: .68rem; font-weight: 700;
-      background: rgba(16,185,129,.12);
-      border: 1px solid rgba(16,185,129,.2);
-      color: var(--green); padding: 2px 9px; border-radius: 5px;
-    }
-    .badge-date { font-size: .7rem; color: var(--text-muted); }
-
-    #map { flex: 1; }
-
-    /* ── DETAIL PANEL ──────────────────────────────── */
-    .detail-panel {
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: 12px; overflow-y: auto;
-      padding: 20px;
-    }
-
-    .dp-header {
-      display: flex; align-items: flex-start;
-      justify-content: space-between; gap: 10px;
-      margin-bottom: 18px;
-      padding-bottom: 16px;
-      border-bottom: 1px solid var(--border);
-    }
-    .dp-title { font-size: 1.05rem; font-weight: 700; margin-bottom: 3px; }
-    .dp-sub { font-size: .75rem; color: var(--text-muted); }
-
-    .sbadge {
-      padding: 4px 10px; border-radius: 20px;
-      font-size: .72rem; font-weight: 700; white-space: nowrap;
-    }
-    .sbadge-verified    { background: var(--accent-dim); color: #60a5fa; border: 1px solid rgba(59,130,246,.3); }
-    .sbadge-high_priority { background: var(--red-dim);  color: #f87171; border: 1px solid rgba(239,68,68,.3); }
-    .sbadge-pending     { background: var(--orange-dim); color: #fbbf24; border: 1px solid rgba(245,158,11,.3); }
-
-    .dp-section { margin-bottom: 16px; }
-    .dp-section-label {
-      font-size: .65rem; text-transform: uppercase;
-      letter-spacing: .09em; color: var(--text-muted);
-      font-weight: 700; margin-bottom: 7px;
-    }
-
-    /* gauge */
-    .gauge-box {
-      background: rgba(255,255,255,.03);
-      border: 1px solid var(--border);
-      border-radius: 9px; padding: 12px 14px;
-    }
-    .gauge-top {
-      display: flex; justify-content: space-between;
-      align-items: baseline; margin-bottom: 8px;
-    }
-    .gauge-val { font-size: 1.2rem; font-weight: 700; color: var(--accent); }
-    .gauge-cap { font-size: .7rem; color: var(--text-muted); }
-    .gauge-track {
-      height: 7px; background: rgba(255,255,255,.07);
-      border-radius: 4px; overflow: hidden;
-    }
-    .gauge-fill {
-      height: 100%; border-radius: 4px;
-      background: linear-gradient(90deg, var(--accent), var(--green));
-      transition: width .6s cubic-bezier(.4,0,.2,1);
-    }
-    .gauge-hint { font-size: .68rem; color: var(--text-muted); margin-top: 5px; }
-
-    /* confidence */
-    .conf-row {
-      display: flex; align-items: center; gap: 10px;
-    }
-    .conf-num { font-size: .95rem; font-weight: 700; min-width: 38px; }
-    .conf-track {
-      flex: 1; height: 5px;
-      background: rgba(255,255,255,.07); border-radius: 3px; overflow: hidden;
-    }
-    .conf-fill { height: 100%; border-radius: 3px; transition: width .5s ease; }
-
-    /* detection */
-    .detect-box {
-      background: rgba(59,130,246,.06);
-      border: 1px solid rgba(59,130,246,.14);
-      border-radius: 8px; padding: 10px 12px;
-      font-size: .78rem; color: #93c5fd; line-height: 1.55;
-    }
-    .detect-box small { color: var(--text-muted); font-size: .7rem; }
-
-    /* cost table */
-    .cost-tbl { width: 100%; border-collapse: collapse; font-size: .8rem; }
-    .cost-tbl tr { border-bottom: 1px solid rgba(31,41,55,.8); }
-    .cost-tbl tr:last-child { border-bottom: none; }
-    .cost-tbl td { padding: 6px 2px; color: var(--text-sub); }
-    .cost-tbl td:last-child { text-align: right; color: var(--text); font-weight: 500; }
-    .cost-tbl .total-row td { font-weight: 700; color: var(--text); padding-top: 10px; }
-    .cost-tbl .total-row td:last-child { color: var(--accent); font-size: .92rem; }
-
-    /* eu badge */
-    .eu-badge {
-      display: inline-flex; align-items: center; gap: 7px;
-      background: var(--green-dim);
-      border: 1px solid rgba(16,185,129,.22);
-      color: var(--green); font-size: .78rem; font-weight: 600;
-      padding: 7px 12px; border-radius: 8px;
-    }
-
-    /* coords */
-    .coord-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-bottom: 14px; }
-    .coord-item {
-      background: rgba(0,0,0,.25); border: 1px solid var(--border);
-      border-radius: 7px; padding: 7px 10px;
-    }
-    .coord-lbl { font-size: .62rem; text-transform: uppercase; letter-spacing: .07em; color: var(--text-muted); }
-    .coord-val { font-size: .8rem; font-weight: 600; font-variant-numeric: tabular-nums; }
-
-    /* buttons */
-    .btn-row { display: flex; gap: 8px; }
-    .btn {
-      flex: 1; padding: 9px 14px; border-radius: 8px;
-      font-size: .8rem; font-weight: 600; cursor: pointer;
-      border: none; font-family: 'Inter', sans-serif;
-      transition: all .18s; display: flex; align-items: center;
-      justify-content: center; gap: 6px;
-    }
-    .btn-primary { background: var(--accent); color: #fff; }
-    .btn-primary:hover { background: #2563eb; transform: translateY(-1px); box-shadow: 0 6px 18px rgba(37,99,235,.4); }
-    .btn-secondary {
-      background: transparent; color: var(--text-sub);
-      border: 1px solid var(--border);
-    }
-    .btn-secondary:hover { background: rgba(255,255,255,.04); color: var(--text); }
-    .btn svg { width: 13px; height: 13px; }
-
-    /* ── DATA TABLE ────────────────────────────────── */
-    .table-card {
-      background: var(--card); border: 1px solid var(--border);
-      border-radius: 12px; overflow: hidden; margin-bottom: 22px;
-    }
-    .table-hdr {
-      padding: 14px 20px; border-bottom: 1px solid var(--border);
-      display: flex; align-items: center; justify-content: space-between;
-    }
-    .table-hdr h3 { font-size: .88rem; font-weight: 700; }
-    .table-count {
-      font-size: .72rem; color: var(--text-muted);
-      background: rgba(255,255,255,.04);
-      border: 1px solid var(--border);
-      padding: 3px 10px; border-radius: 20px;
-    }
-    .table-wrapper { overflow-x: auto; }
-
-    table.dtbl { width: 100%; border-collapse: collapse; font-size: .8rem; }
-    .dtbl thead th {
-      padding: 9px 14px; text-align: left;
-      font-size: .63rem; text-transform: uppercase;
-      letter-spacing: .07em; color: var(--text-muted); font-weight: 700;
-      background: rgba(0,0,0,.2); border-bottom: 1px solid var(--border);
-      white-space: nowrap;
-    }
-    .dtbl tbody tr {
-      border-bottom: 1px solid rgba(31,41,55,.5);
-      transition: background .13s; cursor: pointer;
-    }
-    .dtbl tbody tr:nth-child(even) { background: rgba(255,255,255,.012); }
-    .dtbl tbody tr:hover { background: rgba(59,130,246,.07); }
-    .dtbl tbody tr.active-row {
-      background: rgba(59,130,246,.1) !important;
-      box-shadow: inset 3px 0 0 var(--accent);
-    }
-    .dtbl td { padding: 11px 14px; color: var(--text-sub); white-space: nowrap; }
-    .dtbl td.id-col { font-family: 'Courier New', monospace; font-size: .72rem; color: var(--text-muted); }
-    .dtbl td.name-col { color: var(--text); font-weight: 500; }
-    .dtbl td.name-col span { color: var(--text-muted); font-weight: 400; }
-
-    .btn-view {
-      background: var(--accent-dim); border: 1px solid rgba(59,130,246,.22);
-      color: var(--accent); padding: 4px 12px; border-radius: 6px;
-      font-size: .72rem; font-weight: 700; cursor: pointer;
-      font-family: 'Inter', sans-serif; transition: all .18s;
-      white-space: nowrap;
-    }
-    .btn-view:hover { background: rgba(59,130,246,.22); transform: translateY(-1px); }
-
-    /* ── FOOTER ────────────────────────────────────── */
-    .footer {
-      background: var(--card-2); border-top: 1px solid var(--border);
-      padding: 16px 24px; text-align: center;
-      font-size: .73rem; color: var(--text-muted);
-    }
-    .footer strong { color: var(--text-sub); font-weight: 600; }
-
-    /* ── LEAFLET OVERRIDES ─────────────────────────── */
-    .leaflet-popup-content-wrapper {
-      background: #131e35 !important; color: var(--text) !important;
-      border: 1px solid var(--border-2) !important;
-      border-radius: 11px !important;
-      box-shadow: 0 12px 40px rgba(0,0,0,.6) !important;
-    }
-    .leaflet-popup-tip { background: #131e35 !important; }
-    .leaflet-popup-content {
-      margin: 14px 16px !important;
-      font-family: 'Inter', sans-serif !important;
-      font-size: .8rem !important; line-height: 1.6 !important;
-      min-width: 210px !important;
-    }
-    .leaflet-control-zoom a {
-      background: #111827 !important; color: #9ca3af !important;
-      border-color: var(--border) !important;
-    }
-    .leaflet-control-zoom a:hover { background: #1f2937 !important; color: var(--text) !important; }
-    .leaflet-control-attribution {
-      background: rgba(10,15,30,.7) !important;
-      color: #4b5563 !important; font-size: .6rem !important;
-    }
-    .leaflet-control-attribution a { color: #6b7280 !important; }
-
-    .popup-title { font-weight: 700; font-size: .88rem; color: #f9fafb; margin-bottom: 9px; }
-    .popup-row { display: flex; justify-content: space-between; gap: 14px; padding: 2px 0; }
-    .popup-k { color: #6b7280; }
-    .popup-v { color: #e5e7eb; font-weight: 500; text-align: right; }
-    .popup-badge { display: inline-block; margin-top: 8px; }
-
-    /* map legend */
-    .map-legend {
-      background: rgba(11,17,32,.88);
-      border: 1px solid rgba(255,255,255,.1);
-      border-radius: 9px; padding: 10px 13px;
-      font-size: .72rem; color: var(--text-sub);
-      backdrop-filter: blur(8px);
-    }
-    .legend-title {
-      font-size: .62rem; text-transform: uppercase;
-      letter-spacing: .08em; color: var(--text-muted);
-      font-weight: 700; margin-bottom: 8px;
-    }
-    .legend-item { display: flex; align-items: center; gap: 7px; margin-bottom: 5px; }
-    .legend-item:last-child { margin-bottom: 0; }
-    .legend-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-
-    /* marker pulse ring for high priority */
-    @keyframes pulse-ring {
-      0%   { transform: scale(1); opacity: .6; }
-      100% { transform: scale(2.4); opacity: 0; }
-    }
-    .marker-pulse {
-      position: absolute; top: 50%; left: 50%;
-      transform: translate(-50%,-50%);
-      width: 18px; height: 18px; border-radius: 50%;
-      animation: pulse-ring 1.6s ease-out infinite;
-    }
-    .marker-wrap { position: relative; }
-
-    /* ── RESPONSIVE ────────────────────────────────── */
-    @media (max-width: 1100px) {
-      .split-layout { grid-template-columns: 1fr; height: auto; }
-      .map-card { height: 400px; }
-    }
-    @media (max-width: 768px) {
-      .stats-grid { grid-template-columns: 1fr 1fr; }
-      .nav-links { display: none; }
-      .dtbl thead th:nth-child(5),
-      .dtbl td:nth-child(5),
-      .dtbl thead th:nth-child(7),
-      .dtbl td:nth-child(7) { display: none; }
-    }
-    @media (max-width: 480px) {
-      .stats-grid { grid-template-columns: 1fr; }
-      .main { padding: 14px; }
-    }
-  </style>
+  <link rel="stylesheet" href="css/styles.css" />
 </head>
 <body>
 
-<!-- ═══════════════════ NAVBAR ═══════════════════ -->
+<!-- ═══════════ NAVBAR ═══════════ -->
 <nav class="navbar">
   <div class="navbar-left">
     <a href="#" class="logo">
@@ -464,57 +33,57 @@
   </div>
   <div class="location-badge">
     <svg viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5S10.62 6.5 12 6.5s2.5 1.12 2.5 2.5S13.38 11.5 12 11.5z"/></svg>
-    Romania | Brăila Region
+    Romania | Carpathian Region
   </div>
 </nav>
 
-<!-- ═══════════════════ MAIN ═══════════════════ -->
+<!-- ═══════════ MAIN ═══════════ -->
 <main class="main">
 
   <!-- STATS BAR -->
   <div class="stats-grid">
 
     <div class="stat-card">
-      <div class="stat-icon" style="background:rgba(59,130,246,.12)">
+      <div class="stat-icon" style="background:rgba(59,130,246,.1)">
         <svg viewBox="0 0 24 24" fill="#3b82f6"><path d="M12 2c-5.33 4.55-8 8.48-8 11.8 0 4.98 3.8 8.2 8 8.2s8-3.22 8-8.2C20 10.48 17.33 6.55 12 2z"/></svg>
       </div>
       <div>
         <div class="stat-label">Springs Detected</div>
         <div class="stat-value">24</div>
-        <span class="stat-tag">↑ verified by Sentinel-1</span>
+        <span class="stat-tag green">+3 this month</span>
       </div>
     </div>
 
     <div class="stat-card">
-      <div class="stat-icon" style="background:rgba(16,185,129,.1)">
+      <div class="stat-icon" style="background:rgba(16,185,129,.08)">
         <svg viewBox="0 0 24 24" fill="#10b981"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
       </div>
       <div>
         <div class="stat-label">Villages Covered</div>
         <div class="stat-value">8</div>
-        <span class="stat-tag">↑ verified by Sentinel-1</span>
+        <span class="stat-tag blue">4 fully served</span>
       </div>
     </div>
 
     <div class="stat-card">
-      <div class="stat-icon" style="background:rgba(14,165,233,.1)">
-        <svg viewBox="0 0 24 24" fill="#0ea5e9"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9V8h2v8zm4 0h-2V8h2v8z"/><path d="M12 2c-1 2-5 6.5-5 9.5a5 5 0 0010 0C17 8.5 13 4 12 2z"/></svg>
+      <div class="stat-icon" style="background:rgba(14,165,233,.08)">
+        <svg viewBox="0 0 24 24" fill="#0ea5e9"><path d="M12 2c-1 2-5 6.5-5 9.5a5 5 0 0010 0C17 8.5 13 4 12 2z"/></svg>
       </div>
       <div>
         <div class="stat-label">Avg. Water Reserve</div>
         <div class="stat-value">340 <small>m³/day</small></div>
-        <span class="stat-tag">↑ verified by Sentinel-1</span>
+        <span class="stat-tag blue">Sentinel-1 verified</span>
       </div>
     </div>
 
     <div class="stat-card">
-      <div class="stat-icon" style="background:rgba(245,158,11,.1)">
+      <div class="stat-icon" style="background:rgba(245,158,11,.08)">
         <svg viewBox="0 0 24 24" fill="#f59e0b"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
       </div>
       <div>
         <div class="stat-label">Est. Infrastructure Cost</div>
         <div class="stat-value">€2.1M</div>
-        <span class="stat-tag">↑ verified by Sentinel-1</span>
+        <span class="stat-tag orange">2 critical sites</span>
       </div>
     </div>
 
@@ -528,11 +97,11 @@
       <div class="map-header">
         <div class="map-header-title">
           <svg viewBox="0 0 24 24"><path d="M20.5 3l-.16.03L15 5.1 9 3 3.36 4.9c-.21.07-.36.25-.36.48V20.5c0 .28.22.5.5.5l.16-.03L9 18.9l6 2.1 5.64-1.9c.21-.07.36-.25.36-.48V3.5c0-.28-.22-.5-.5-.5zM15 19l-6-2.11V5l6 2.11V19z"/></svg>
-          Spring Detection Map — Carpathian Region
+          Spring Detection Map — Carpathian Arc
         </div>
         <div class="map-badges">
           <span class="badge-date">Last scan: 24 Apr 2026</span>
-          <span class="badge-live">● Live</span>
+          <span class="badge-live">&#9679; Live</span>
         </div>
       </div>
       <div id="map"></div>
@@ -540,7 +109,7 @@
 
     <!-- DETAIL PANEL -->
     <div class="detail-panel" id="detail-panel">
-      <!-- Populated by JS -->
+      <!-- Populated by app.js -->
     </div>
 
   </div>
@@ -549,7 +118,7 @@
   <div class="table-card">
     <div class="table-hdr">
       <h3>Spring Sources Registry</h3>
-      <span class="table-count">7 sources</span>
+      <span class="table-count">— sources</span>
     </div>
     <div class="table-wrapper">
       <table class="dtbl">
@@ -575,249 +144,16 @@
 
 <!-- FOOTER -->
 <footer class="footer">
-  <strong>H2Oolkit © 2026</strong> &nbsp;|&nbsp;
-  Powered by Copernicus Sentinel-1 &amp; Galileo &nbsp;|&nbsp;
+  <strong>H2Oolkit &copy; 2026</strong>
+  <span class="footer-sep">|</span>
+  <span class="footer-badge">&#127759; Copernicus Sentinel-1 &amp; Sentinel-2</span>
+  <span class="footer-badge">&#128225; Galileo GNSS</span>
+  <span class="footer-sep">|</span>
   Built at <strong>CASSINI Hackathon — Space for Water</strong>
 </footer>
 
-<!-- ═══════════════════ SCRIPT ═══════════════════ -->
-<script>
-  /* ── DATA ──────────────────────────────────────── */
-  const springs = [
-    { id:"SP-001", name:"Izvorul Rece",    region:"Vrancea",   lat:45.71, lon:26.82, reserve:285, confidence:91, distance:3.2, cost:142000, status:"verified"      },
-    { id:"SP-002", name:"Izvorul Mare",    region:"Buzău",     lat:45.38, lon:26.41, reserve:420, confidence:87, distance:1.8, cost:98000,  status:"high_priority"  },
-    { id:"SP-003", name:"Fântâna Bradului",region:"Prahova",   lat:45.42, lon:25.54, reserve:190, confidence:78, distance:5.1, cost:231000, status:"pending"        },
-    { id:"SP-004", name:"Izvorul Negru",   region:"Covasna",   lat:45.86, lon:26.05, reserve:510, confidence:94, distance:2.4, cost:87000,  status:"verified"       },
-    { id:"SP-005", name:"Pârâul Sec",      region:"Bacău",     lat:46.21, lon:26.63, reserve:155, confidence:72, distance:6.7, cost:318000, status:"pending"        },
-    { id:"SP-006", name:"Izvorul Alb",     region:"Harghita",  lat:46.37, lon:25.81, reserve:640, confidence:96, distance:1.1, cost:71000,  status:"verified"       },
-    { id:"SP-007", name:"Vâlceaua Rece",   region:"Dâmbovița", lat:45.28, lon:25.22, reserve:230, confidence:83, distance:4.3, cost:176000, status:"high_priority"  }
-  ];
-
-  const MAX_RESERVE = 700;
-
-  const STATUS_LABEL = { verified:"Verified", high_priority:"High Priority", pending:"Pending Review" };
-  const STATUS_COLOR = { verified:"#3b82f6", high_priority:"#ef4444", pending:"#f59e0b" };
-
-  function fmtCost(n){ return '€' + n.toLocaleString('de-DE'); }
-
-  function confColor(c){
-    if (c >= 90) return '#10b981';
-    if (c >= 80) return '#3b82f6';
-    if (c >= 70) return '#f59e0b';
-    return '#ef4444';
-  }
-
-  function breakdown(total){
-    const pipeline = Math.round(total * 0.668);
-    const pump     = Math.round(total * 0.197);
-    const treatment = total - pipeline - pump;
-    return { pipeline, pump, treatment };
-  }
-
-  /* ── MAP ───────────────────────────────────────── */
-  const map = L.map('map', { center:[45.9, 26.1], zoom:8, zoomControl:true });
-
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
-    subdomains: 'abcd', maxZoom: 19
-  }).addTo(map);
-
-  /* legend */
-  const legend = L.control({ position:'bottomleft' });
-  legend.onAdd = () => {
-    const d = L.DomUtil.create('div','map-legend');
-    d.innerHTML = `
-      <div class="legend-title">Spring Status</div>
-      <div class="legend-item"><div class="legend-dot" style="background:#3b82f6"></div>Verified</div>
-      <div class="legend-item"><div class="legend-dot" style="background:#ef4444"></div>High Priority</div>
-      <div class="legend-item"><div class="legend-dot" style="background:#f59e0b"></div>Pending Review</div>`;
-    return d;
-  };
-  legend.addTo(map);
-
-  const markerRefs = {};
-
-  springs.forEach(sp => {
-    const c = STATUS_COLOR[sp.status];
-    const isPriority = sp.status === 'high_priority';
-
-    const pulse = isPriority
-      ? `<div class="marker-pulse" style="background:${c}; position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:18px;height:18px;border-radius:50%;animation:pulse-ring 1.6s ease-out infinite;"></div>`
-      : '';
-
-    const html = `
-      <div style="position:relative;width:22px;height:22px;">
-        ${pulse}
-        <div style="
-          position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
-          width:16px;height:16px;
-          background:${c};
-          border:2.5px solid rgba(255,255,255,.85);
-          border-radius:50%;
-          box-shadow:0 0 0 3px ${c}40, 0 3px 10px rgba(0,0,0,.5);
-          cursor:pointer;
-        "></div>
-      </div>`;
-
-    const icon = L.divIcon({
-      html, className:'', iconSize:[22,22], iconAnchor:[11,11], popupAnchor:[0,-14]
-    });
-
-    const popup = `
-      <div class="popup-title">${sp.name} — ${sp.region}</div>
-      <div class="popup-row"><span class="popup-k">Water Reserve</span><span class="popup-v">${sp.reserve} m³/day</span></div>
-      <div class="popup-row"><span class="popup-k">Detection Confidence</span><span class="popup-v">${sp.confidence}% (Sentinel-1 SAR)</span></div>
-      <div class="popup-row"><span class="popup-k">Distance to Village</span><span class="popup-v">${sp.distance} km</span></div>
-      <div class="popup-row"><span class="popup-k">Pipeline Cost Est.</span><span class="popup-v">${fmtCost(sp.cost)}</span></div>
-      <div class="popup-badge"><span class="sbadge sbadge-${sp.status}">${STATUS_LABEL[sp.status]}</span></div>`;
-
-    const marker = L.marker([sp.lat, sp.lon], { icon })
-      .addTo(map)
-      .bindPopup(popup);
-
-    marker.on('click', () => selectSpring(sp));
-    markerRefs[sp.id] = marker;
-  });
-
-  /* ── DETAIL PANEL ──────────────────────────────── */
-  function renderDetail(sp){
-    const bd  = breakdown(sp.cost);
-    const pct = (sp.reserve / MAX_RESERVE * 100).toFixed(1);
-    const cc  = confColor(sp.confidence);
-
-    document.getElementById('detail-panel').innerHTML = `
-      <div class="dp-header">
-        <div>
-          <div class="dp-title">${sp.name}</div>
-          <div class="dp-sub">${sp.region} County &middot; ${sp.id}</div>
-        </div>
-        <span class="sbadge sbadge-${sp.status}">${STATUS_LABEL[sp.status]}</span>
-      </div>
-
-      <div class="dp-section">
-        <div class="dp-section-label">Water Reserve Capacity</div>
-        <div class="gauge-box">
-          <div class="gauge-top">
-            <span class="gauge-val">${sp.reserve} m³/day</span>
-            <span class="gauge-cap">Max: ${MAX_RESERVE} m³/day</span>
-          </div>
-          <div class="gauge-track">
-            <div class="gauge-fill" style="width:${pct}%"></div>
-          </div>
-          <div class="gauge-hint">${pct}% of regional capacity threshold</div>
-        </div>
-      </div>
-
-      <div class="dp-section">
-        <div class="dp-section-label">Detection Confidence</div>
-        <div class="conf-row">
-          <span class="conf-num" style="color:${cc}">${sp.confidence}%</span>
-          <div class="conf-track"><div class="conf-fill" style="width:${sp.confidence}%;background:${cc}"></div></div>
-        </div>
-      </div>
-
-      <div class="dp-section">
-        <div class="dp-section-label">Satellite Detection Method</div>
-        <div class="detect-box">
-          🛰 Sentinel-1 SAR moisture anomaly + DEM slope analysis<br>
-          <small>Copernicus Programme · ESA · Last Pass: 2026-04-22 03:14 UTC</small>
-        </div>
-      </div>
-
-      <div class="dp-section">
-        <div class="dp-section-label">Cost Breakdown</div>
-        <table class="cost-tbl">
-          <tr><td>Pipeline construction</td><td>${fmtCost(bd.pipeline)}</td></tr>
-          <tr><td>Pumping station</td><td>${fmtCost(bd.pump)}</td></tr>
-          <tr><td>Water treatment unit</td><td>${fmtCost(bd.treatment)}</td></tr>
-          <tr class="total-row"><td>Total Estimate</td><td>${fmtCost(sp.cost)}</td></tr>
-        </table>
-      </div>
-
-      <div class="dp-section">
-        <div class="dp-section-label">EU Funding Eligibility</div>
-        <div class="eu-badge">✅ Eligible — POIM 2021–2027</div>
-      </div>
-
-      <div class="coord-grid">
-        <div class="coord-item">
-          <div class="coord-lbl">Latitude</div>
-          <div class="coord-val">${sp.lat.toFixed(4)}° N</div>
-        </div>
-        <div class="coord-item">
-          <div class="coord-lbl">Longitude</div>
-          <div class="coord-val">${sp.lon.toFixed(4)}° E</div>
-        </div>
-      </div>
-
-      <div class="btn-row">
-        <button class="btn btn-primary" onclick="generateReport('${sp.name.replace(/'/g,"\\'")}')">
-          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
-          Generate Full Report
-        </button>
-        <button class="btn btn-secondary" onclick="flagReview('${sp.id}','${sp.name.replace(/'/g,"\\'")}')">
-          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M14.4 6L14 4H5v17h2v-7h5.6l.4 2h7V6z"/></svg>
-          Flag for Review
-        </button>
-      </div>
-    `;
-  }
-
-  /* ── SELECT ────────────────────────────────────── */
-  function selectSpring(sp){
-    renderDetail(sp);
-    highlightRow(sp.id);
-  }
-
-  /* ── TABLE ─────────────────────────────────────── */
-  function renderTable(){
-    document.getElementById('springs-tbody').innerHTML = springs.map(sp => `
-      <tr id="row-${sp.id}" onclick="handleRowClick('${sp.id}')">
-        <td class="id-col">${sp.id}</td>
-        <td class="name-col">${sp.name} <span>— ${sp.region}</span></td>
-        <td>${sp.reserve}</td>
-        <td><span style="color:${confColor(sp.confidence)};font-weight:700">${sp.confidence}%</span></td>
-        <td>${sp.distance} km</td>
-        <td>${fmtCost(sp.cost)}</td>
-        <td><span style="color:#10b981;font-size:.72rem;font-weight:700">✓ POIM</span></td>
-        <td><span class="sbadge sbadge-${sp.status}">${STATUS_LABEL[sp.status]}</span></td>
-        <td><button class="btn-view" onclick="event.stopPropagation();viewSpring('${sp.id}')">View →</button></td>
-      </tr>
-    `).join('');
-  }
-
-  function handleRowClick(id){
-    const sp = springs.find(s => s.id === id);
-    selectSpring(sp);
-    markerRefs[id].openPopup();
-    map.setView([sp.lat, sp.lon], 10, { animate:true });
-  }
-
-  function viewSpring(id){
-    handleRowClick(id);
-  }
-
-  function highlightRow(id){
-    document.querySelectorAll('.dtbl tbody tr').forEach(r => r.classList.remove('active-row'));
-    const row = document.getElementById(`row-${id}`);
-    if (row){
-      row.classList.add('active-row');
-      row.scrollIntoView({ behavior:'smooth', block:'nearest' });
-    }
-  }
-
-  /* ── ACTIONS ───────────────────────────────────── */
-  function generateReport(name){
-    alert(`Generating PDF report for ${name}...\nThis feature is available in the full version.`);
-  }
-  function flagReview(id, name){
-    alert(`${name} (${id}) has been flagged for review.\nThe field team will be notified within 24 hours.`);
-  }
-
-  /* ── INIT ──────────────────────────────────────── */
-  renderTable();
-  selectSpring(springs[0]);
-  highlightRow(springs[0].id);
-</script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="js/data-bridge.js"></script>
+<script src="js/app.js"></script>
 </body>
 </html>

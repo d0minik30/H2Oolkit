@@ -1,0 +1,121 @@
+[
+  {
+    "id": "SP-001",
+    "name": "Izvorul Rece",
+    "region": "Vrancea",
+    "reserve": 285,
+    "confidence": 91,
+    "distance_km": 3.2,
+    "cost_eur": 142000,
+    "status": "verified",
+    "satellite": {
+      "sentinel1_sar_anomaly": 0.73,
+      "sentinel2_ndwi": 0.42,
+      "dem_slope_deg": 8.2,
+      "last_pass_utc": "2026-04-22T03:14:00Z",
+      "orbit_direction": "ascending"
+    }
+  },
+  {
+    "id": "SP-002",
+    "name": "Izvorul Mare",
+    "region": "Buzău",
+    "reserve": 420,
+    "confidence": 87,
+    "distance_km": 1.8,
+    "cost_eur": 98000,
+    "status": "high_priority",
+    "satellite": {
+      "sentinel1_sar_anomaly": 0.89,
+      "sentinel2_ndwi": 0.61,
+      "dem_slope_deg": 5.4,
+      "last_pass_utc": "2026-04-23T01:47:00Z",
+      "orbit_direction": "descending"
+    }
+  },
+  {
+    "id": "SP-003",
+    "name": "Fântâna Bradului",
+    "region": "Prahova",
+    "reserve": 190,
+    "confidence": 78,
+    "distance_km": 5.1,
+    "cost_eur": 231000,
+    "status": "pending",
+    "satellite": {
+      "sentinel1_sar_anomaly": 0.54,
+      "sentinel2_ndwi": 0.29,
+      "dem_slope_deg": 14.7,
+      "last_pass_utc": "2026-04-21T22:58:00Z",
+      "orbit_direction": "ascending"
+    }
+  },
+  {
+    "id": "SP-004",
+    "name": "Izvorul Negru",
+    "region": "Covasna",
+    "reserve": 510,
+    "confidence": 94,
+    "distance_km": 2.4,
+    "cost_eur": 87000,
+    "status": "verified",
+    "satellite": {
+      "sentinel1_sar_anomaly": 0.91,
+      "sentinel2_ndwi": 0.67,
+      "dem_slope_deg": 6.1,
+      "last_pass_utc": "2026-04-24T00:33:00Z",
+      "orbit_direction": "ascending"
+    }
+  },
+  {
+    "id": "SP-005",
+    "name": "Pârâul Sec",
+    "region": "Bacău",
+    "reserve": 155,
+    "confidence": 72,
+    "distance_km": 6.7,
+    "cost_eur": 318000,
+    "status": "pending",
+    "satellite": {
+      "sentinel1_sar_anomaly": 0.41,
+      "sentinel2_ndwi": 0.18,
+      "dem_slope_deg": 19.3,
+      "last_pass_utc": "2026-04-20T04:02:00Z",
+      "orbit_direction": "descending"
+    }
+  },
+  {
+    "id": "SP-006",
+    "name": "Izvorul Alb",
+    "region": "Harghita",
+    "reserve": 640,
+    "confidence": 96,
+    "distance_km": 1.1,
+    "cost_eur": 71000,
+    "status": "verified",
+    "satellite": {
+      "sentinel1_sar_anomaly": 0.95,
+      "sentinel2_ndwi": 0.74,
+      "dem_slope_deg": 3.8,
+      "last_pass_utc": "2026-04-24T02:19:00Z",
+      "orbit_direction": "ascending"
+    }
+  },
+  {
+    "id": "SP-007",
+    "name": "Vâlceaua Rece",
+    "region": "Dâmbovița",
+    "reserve": 230,
+    "confidence": 83,
+    "distance_km": 4.3,
+    "cost_eur": 176000,
+    "status": "high_priority",
+    "satellite": {
+      "sentinel1_sar_anomaly": 0.68,
+      "sentinel2_ndwi": 0.37,
+      "dem_slope_deg": 11.5,
+      "last_pass_utc": "2026-04-22T23:41:00Z",
+      "orbit_direction": "descending"
+    }
+  }
+]
