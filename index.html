@@ -40,7 +40,8 @@
       <svg viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5S10.62 6.5 12 6.5s2.5 1.12 2.5 2.5S13.38 11.5 12 11.5z"/></svg>
       Romania &mdash; Carpathian Region
     </div>
-    <div class="nav-scan-badge"><span class="scan-dot"></span>Live · 24 Apr 2026</div>
+    <div class="nav-scan-badge"><span class="scan-dot"></span>Live · 25 Apr 2026</div>
+    <div class="backend-pill" id="backend-status" data-state="checking" title="Backend service status">checking…</div>
     <button class="dark-toggle" id="dark-toggle" onclick="toggleDark()" aria-label="Toggle dark mode" title="Toggle dark mode">
       <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
@@ -225,6 +226,7 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="js/data-bridge.js"></script>
+<script src="js/api-client.js"></script>
 <script src="js/app.js"></script>
 <script>
   function toggleDark() {

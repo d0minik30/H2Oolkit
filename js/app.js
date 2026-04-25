@@ -316,15 +316,20 @@ function renderDetail(sp) {
     </div>
 
     <div class="btn-row">
-      <button class="btn btn-primary" onclick="generateReport('${sp.name.replace(/'/g,"\\'")}')">
+      <button class="btn btn-primary" onclick="generateReport('${sp.id}','${sp.name.replace(/'/g,"\\'")}')">
         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
         Generate Report
+      </button>
+      <button class="btn btn-secondary" onclick="runLiveAnalysis('${sp.id}','${sp.name.replace(/'/g,"\\'")}')">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V5a2 2 0 00-2-2zm-7 14l-4-4 1.4-1.4L12 14.2l5.6-5.6L19 10z"/></svg>
+        Run Live Analysis
       </button>
       <button class="btn btn-secondary" onclick="flagReview('${sp.id}','${sp.name.replace(/'/g,"\\'")}')">
         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M14.4 6L14 4H5v17h2v-7h5.6l.4 2h7V6z"/></svg>
         Flag Review
       </button>
     </div>
+    <div id="live-analysis-${sp.id}" class="live-analysis"></div>
   `;
 }
 
@@ -404,8 +409,146 @@ function highlightRow(id) {
 }
 
 /* ── ACTIONS ─────────────────────────────────────── */
-function generateReport(name) { alert(`Generating PDF report for ${name}...\nThis feature is available in the full version.`); }
-function flagReview(id, name) { alert(`${name} (${id}) flagged for review.\nThe field team will be notified within 24 hours.`); }
+async function generateReport(id, name) {
+  if (!(await H2O.checkBackend())) {
+    alert(
+      `PDF report generation needs the backend service.\n\n` +
+      `Start it with:\n  py -m backend.server\n\n` +
+      `(then refresh this page)`
+    );
+    return;
+  }
+  setBackendStatus('working', 'Generating PDF…');
+  try {
+    await H2O.downloadReport(id, `H2Oolkit_${id}_${name.replace(/[^a-z0-9_-]/gi,'')}.pdf`);
+    setBackendStatus('online', 'PDF downloaded');
+  } catch (err) {
+    console.error(err);
+    setBackendStatus('error', 'PDF generation failed');
+    alert(`PDF generation failed: ${err.message}`);
+  }
+}
+
+function flagReview(id, name) {
+  alert(`${name} (${id}) flagged for review.\nThe field team will be notified within 24 hours.`);
+}
+
+async function runLiveAnalysis(id, name) {
+  const target = document.getElementById(`live-analysis-${id}`);
+  if (!target) return;
+
+  if (!(await H2O.checkBackend())) {
+    target.innerHTML = `
+      <div class="dp-section live-analysis-warn">
+        <div class="dp-section-label">Live Analysis</div>
+        <p>Backend service offline. Start it with <code>py -m backend.server</code> then retry.</p>
+      </div>`;
+    return;
+  }
+
+  target.innerHTML = `
+    <div class="dp-section">
+      <div class="dp-section-label">Live Analysis — ${name}</div>
+      <p class="live-loading">Querying Open-Meteo, OSM &amp; SRTM…</p>
+    </div>`;
+  setBackendStatus('working', 'Running live analysis…');
+
+  try {
+    const result = await H2O.analyzeSpring(id);
+    target.innerHTML = renderLiveAnalysis(result);
+    setBackendStatus('online', 'Live analysis complete');
+  } catch (err) {
+    console.error(err);
+    target.innerHTML = `
+      <div class="dp-section live-analysis-warn">
+        <div class="dp-section-label">Live Analysis</div>
+        <p>Failed: ${err.message}</p>
+      </div>`;
+    setBackendStatus('error', 'Live analysis failed');
+  }
+}
+
+function renderLiveAnalysis(r) {
+  const sp   = r.spring_analysis ?? {};
+  const wr   = r.water_reserve ?? {};
+  const cost = r.cost ?? {};
+  const route = r.route ?? {};
+  const wx   = r.weather ?? {};
+
+  const prob = (sp.spring_probability ?? 0) * 100;
+  const probColor = prob >= 65 ? '#059669' : prob >= 40 ? '#b45309' : '#dc2626';
+
+  const fmtEur = (n) => '€' + (n ?? 0).toLocaleString('de-DE');
+  const fmtL   = (n) => (n ?? 0).toLocaleString('en-US') + ' L/day';
+
+  const proj = wr.three_year_projection_m3 ?? {};
+
+  return `
+    <div class="dp-section live-analysis-result">
+      <div class="dp-section-label">Live Analysis Results</div>
+
+      <div class="sat-grid">
+        <div class="sat-cell">
+          <div class="sat-lbl">Spring Probability</div>
+          <div class="sat-val" style="color:${probColor}">${prob.toFixed(0)}%</div>
+        </div>
+        <div class="sat-cell">
+          <div class="sat-lbl">Daily Flow</div>
+          <div class="sat-val">${fmtL(wr.daily_flow_liters)}</div>
+        </div>
+        <div class="sat-cell">
+          <div class="sat-lbl">Total Cost</div>
+          <div class="sat-val">${fmtEur(cost.total_cost_eur)}</div>
+        </div>
+        <div class="sat-cell">
+          <div class="sat-lbl">PNRR Grant</div>
+          <div class="sat-val">${fmtEur(cost.pnrr_grant_eur)}</div>
+        </div>
+        <div class="sat-cell">
+          <div class="sat-lbl">Village Pays</div>
+          <div class="sat-val">${fmtEur(cost.village_contribution_eur)}</div>
+        </div>
+        <div class="sat-cell">
+          <div class="sat-lbl">Feasibility</div>
+          <div class="sat-val" style="text-transform:capitalize">${(cost.feasibility ?? '—').replace(/_/g,' ')}</div>
+        </div>
+      </div>
+
+      <div class="coord-grid" style="margin-top:10px">
+        <div class="coord-item"><div class="coord-lbl">Mean Annual Precip.</div>
+          <div class="coord-val">${(wx.mean_annual_precipitation_mm ?? 0).toFixed(0)} mm</div></div>
+        <div class="coord-item"><div class="coord-lbl">Recharge</div>
+          <div class="coord-val">${(wx.estimated_recharge_mm ?? 0).toFixed(0)} mm</div></div>
+        <div class="coord-item"><div class="coord-lbl">Trend</div>
+          <div class="coord-val">${(wx.trend_mm_per_year ?? 0).toFixed(1)} mm/yr</div></div>
+        <div class="coord-item"><div class="coord-lbl">Pipeline Length</div>
+          <div class="coord-val">${(route.terrain_adjusted_distance_km ?? 0).toFixed(2)} km</div></div>
+        <div class="coord-item"><div class="coord-lbl">Feed Type</div>
+          <div class="coord-val" style="text-transform:capitalize">${route.feed_type ?? '—'}</div></div>
+        <div class="coord-item"><div class="coord-lbl">Pipe Diameter</div>
+          <div class="coord-val">${route.pipe_diameter_mm ?? '—'} mm</div></div>
+      </div>
+
+      <div class="coord-grid" style="margin-top:10px">
+        <div class="coord-item"><div class="coord-lbl">Year 1 (m³)</div>
+          <div class="coord-val">${(proj.year_1 ?? 0).toLocaleString()}</div></div>
+        <div class="coord-item"><div class="coord-lbl">Year 2 (m³)</div>
+          <div class="coord-val">${(proj.year_2 ?? 0).toLocaleString()}</div></div>
+        <div class="coord-item"><div class="coord-lbl">Year 3 (m³)</div>
+          <div class="coord-val">${(proj.year_3 ?? 0).toLocaleString()}</div></div>
+      </div>
+
+      <p class="live-recommendation">${r.recommendation ?? ''}</p>
+      ${wx.fallback ? `<p class="live-note">Weather data fell back to regional defaults (Open-Meteo unreachable).</p>` : ''}
+    </div>`;
+}
+
+function setBackendStatus(state, text) {
+  const el = document.getElementById('backend-status');
+  if (!el) return;
+  el.dataset.state = state;
+  el.textContent = text;
+}
 
 /* ── MAP EXPAND TOGGLE ───────────────────────────── */
 function toggleMapExpand() {
@@ -421,9 +564,17 @@ function toggleMapExpand() {
 }
 
 /* ── INIT ────────────────────────────────────────── */
+async function probeBackend() {
+  setBackendStatus('checking', 'checking…');
+  const online = await H2O.checkBackend();
+  if (online) setBackendStatus('online',  'backend online');
+  else        setBackendStatus('offline', 'backend offline');
+}
+
 async function init() {
   initMap();
   renderDetailPlaceholder();
+  probeBackend();
 
   _allSprings = await loadSprings();
 
