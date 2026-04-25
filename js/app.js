@@ -614,82 +614,125 @@ function renderSourcesPanel(springs) {
   document.getElementById('sources-list').innerHTML = springs.map(sp => {
     const col = TYPE_COLOR[sp.type] ?? '#2563eb';
     const cc  = confColor(sp.confidence);
+    const barW = Math.round(sp.reserve / 900 * 100);
     return `
     <div class="bm-src-row">
       <div class="bm-src-icon" style="background:${col}18;color:${col}">${TYPE_ICON[sp.type] ?? TYPE_ICON.spring}</div>
       <div class="bm-src-info">
         <div class="bm-src-name">${sp.name}</div>
-        <div class="bm-src-meta">${sp.nearest_village} &middot; ${sp.type}</div>
+        <div class="bm-src-meta">${sp.nearest_village} &middot; ${sp.type.charAt(0).toUpperCase()+sp.type.slice(1)}</div>
+        <div class="bm-src-bar-track"><div class="bm-src-bar-fill" style="width:${barW}%;background:${col}"></div></div>
       </div>
       <div class="bm-src-stats">
         <span class="bm-src-reserve">${sp.reserve} <em>m³/d</em></span>
         <span class="bm-src-conf" style="color:${cc}">${sp.confidence}%</span>
       </div>
-      <span class="sbadge sbadge-${sp.status}">${STATUS_LABEL[sp.status] ?? sp.status}</span>
     </div>`;
   }).join('');
 }
 
 function renderOverviewStats(springs, villages) {
-  const total       = springs.length;
-  const totalRes    = springs.reduce((s, sp) => s + sp.reserve, 0);
-  const avgConf     = Math.round(springs.reduce((s, sp) => s + sp.confidence, 0) / total);
-  const verified    = springs.filter(sp => sp.status === 'verified').length;
-  const highPrio    = springs.filter(sp => sp.status === 'high_priority').length;
-  const pending     = springs.filter(sp => sp.status === 'pending').length;
-  const best        = springs.reduce((a, b) => b.reserve > a.reserve ? b : a);
-  const totalNeed   = villages.reduce((s, v) => s + v.water_need_m3_day, 0);
-  const coverage    = Math.min(100, Math.round(totalRes / totalNeed * 100));
+  const total      = springs.length;
+  const totalRes   = springs.reduce((s, sp) => s + sp.reserve, 0);
+  const avgConf    = Math.round(springs.reduce((s, sp) => s + sp.confidence, 0) / total);
+  const avgElev    = Math.round(springs.reduce((s, sp) => s + sp.elevation_m, 0) / total);
+  const avgAquifer = Math.round(springs.reduce((s, sp) => s + sp.aquifer_depth_m, 0) / total);
+  const best       = springs.reduce((a, b) => b.reserve > a.reserve ? b : a);
+  const totalNeed  = villages.reduce((s, v) => s + v.water_need_m3_day, 0);
+  const coverage   = Math.min(100, Math.round(totalRes / totalNeed * 100));
+  const typeCount  = {};
+  springs.forEach(sp => { typeCount[sp.type] = (typeCount[sp.type] ?? 0) + 1; });
+
+  const coverageColor = coverage >= 80 ? '#059669' : coverage >= 50 ? '#b45309' : '#dc2626';
+  const confColor2 = avgConf >= 90 ? '#059669' : avgConf >= 80 ? '#2563eb' : '#b45309';
 
   document.getElementById('overview-stats').innerHTML = `
-    <div class="ov-big-stat">
-      <div class="ov-big-val">${total}</div>
-      <div class="ov-big-lbl">Total Detected Sources</div>
-    </div>
-    <div class="ov-divider"></div>
-    <div class="ov-grid">
-      <div class="ov-cell">
-        <div class="ov-cell-val">${totalRes.toLocaleString()}</div>
-        <div class="ov-cell-lbl">Total capacity (m³/day)</div>
+    <div class="ov-hero">
+      <div class="ov-hero-circle">
+        <div class="ov-hero-val">${total}</div>
+        <div class="ov-hero-lbl">sources</div>
       </div>
-      <div class="ov-cell">
-        <div class="ov-cell-val">${avgConf}%</div>
-        <div class="ov-cell-lbl">Avg. confidence</div>
-      </div>
-      <div class="ov-cell">
-        <div class="ov-cell-val">${coverage}%</div>
-        <div class="ov-cell-lbl">Village need covered</div>
+      <div class="ov-hero-side">
+        <div class="ov-hero-tag">
+          <svg viewBox="0 0 24 24" fill="#059669"><path d="M12 2c-5.33 4.55-8 8.48-8 11.8 0 4.98 3.8 8.2 8 8.2s8-3.22 8-8.2C20 10.48 17.33 6.55 12 2z"/></svg>
+          Satellite-detected water sources
+        </div>
+        <div class="ov-hero-cap">${totalRes.toLocaleString()} <span>m³/day total capacity</span></div>
+        <div class="ov-hero-villages">${villages.length} villages &middot; ${Object.keys(typeCount).length} source types</div>
       </div>
     </div>
-    <div class="ov-divider"></div>
-    <div class="ov-status-row">
-      <div class="ov-status-item">
-        <div class="ov-status-dot" style="background:#2563eb"></div>
-        <div class="ov-status-info">
-          <div class="ov-status-val">${verified}</div>
-          <div class="ov-status-lbl">Verified</div>
+
+    <div class="ov-stat-list">
+      <div class="ov-stat-row">
+        <div class="ov-stat-icon" style="background:rgba(37,99,235,.1)">
+          <svg viewBox="0 0 24 24" fill="#2563eb"><path d="M12 2c-5.33 4.55-8 8.48-8 11.8 0 4.98 3.8 8.2 8 8.2s8-3.22 8-8.2C20 10.48 17.33 6.55 12 2z"/></svg>
+        </div>
+        <div class="ov-stat-body">
+          <div class="ov-stat-label">Avg. Detection Confidence</div>
+          <div class="ov-stat-bar-row">
+            <div class="ov-stat-bar-track">
+              <div class="ov-stat-bar-fill" style="width:${avgConf}%;background:${confColor2}"></div>
+            </div>
+            <div class="ov-stat-val" style="color:${confColor2}">${avgConf}%</div>
+          </div>
         </div>
       </div>
-      <div class="ov-status-item">
-        <div class="ov-status-dot" style="background:#dc2626"></div>
-        <div class="ov-status-info">
-          <div class="ov-status-val">${highPrio}</div>
-          <div class="ov-status-lbl">High Priority</div>
+
+      <div class="ov-stat-row">
+        <div class="ov-stat-icon" style="background:rgba(5,150,105,.1)">
+          <svg viewBox="0 0 24 24" fill="#059669"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
+        </div>
+        <div class="ov-stat-body">
+          <div class="ov-stat-label">Village Water Need Covered</div>
+          <div class="ov-stat-bar-row">
+            <div class="ov-stat-bar-track">
+              <div class="ov-stat-bar-fill" style="width:${coverage}%;background:${coverageColor}"></div>
+            </div>
+            <div class="ov-stat-val" style="color:${coverageColor}">${coverage}%</div>
+          </div>
         </div>
       </div>
-      <div class="ov-status-item">
-        <div class="ov-status-dot" style="background:#b45309"></div>
-        <div class="ov-status-info">
-          <div class="ov-status-val">${pending}</div>
-          <div class="ov-status-lbl">Pending</div>
+
+      <div class="ov-stat-row">
+        <div class="ov-stat-icon" style="background:rgba(180,83,9,.1)">
+          <svg viewBox="0 0 24 24" fill="#b45309"><path d="M3 17h4v4H3zm7-4h4v8h-4zm7-6h4v14h-4z"/></svg>
+        </div>
+        <div class="ov-stat-body">
+          <div class="ov-stat-label">Average Source Elevation</div>
+          <div class="ov-stat-number">${avgElev.toLocaleString()} <span>m above sea level</span></div>
+        </div>
+      </div>
+
+      <div class="ov-stat-row">
+        <div class="ov-stat-icon" style="background:rgba(8,145,178,.1)">
+          <svg viewBox="0 0 24 24" fill="#0891b2"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
+        </div>
+        <div class="ov-stat-body">
+          <div class="ov-stat-label">Avg. Aquifer Depth</div>
+          <div class="ov-stat-number">${avgAquifer} <span>m underground</span></div>
         </div>
       </div>
     </div>
-    <div class="ov-divider"></div>
-    <div class="ov-best">
-      <div class="ov-best-lbl">Highest Output Source</div>
-      <div class="ov-best-val">${best.name}</div>
-      <div class="ov-best-meta">${best.reserve} m³/day &middot; ${best.nearest_village} &middot; ${best.confidence}% confidence</div>
+
+    <div class="ov-type-row">
+      ${Object.entries(typeCount).map(([type, count]) => {
+        const col = TYPE_COLOR[type] ?? '#2563eb';
+        return `<div class="ov-type-chip" style="border-color:${col}30;background:${col}10;color:${col}">
+          ${TYPE_ICON[type] ?? TYPE_ICON.spring}
+          ${count} ${type}${count > 1 ? 's' : ''}
+        </div>`;
+      }).join('')}
+    </div>
+
+    <div class="ov-best-card">
+      <div class="ov-best-eyebrow">Highest Output Source</div>
+      <div class="ov-best-name">${best.name}</div>
+      <div class="ov-best-details">
+        <span>${best.reserve} m³/day</span>
+        <span>${best.nearest_village}</span>
+        <span>${best.confidence}% confidence</span>
+        <span>${best.elevation_m} m elevation</span>
+      </div>
     </div>`;
 }
 
