@@ -608,83 +608,89 @@ function flagReview(id, name) {
   alert(`${name} (${id}) flagged for field team review.`);
 }
 
-/* ── COMMUNITIES + SOURCES PANELS ───────────────── */
-function renderCommunitiesPanel(villages) {
-  const ACCESS_COLOR = {
-    'No piped water': '#dc2626',
-    'Seasonal shortages': '#b45309',
-    'Insufficient pressure': '#d97706'
-  };
-  document.getElementById('communities-count').textContent = `${villages.length} village${villages.length !== 1 ? 's' : ''}`;
-  document.getElementById('communities-grid').innerHTML = villages.map(v => {
-    const col = ACCESS_COLOR[v.access_status] ?? '#64748b';
-    return `
-    <div class="vill-card">
-      <div class="vill-card-top">
-        <div class="vill-name">${v.name}</div>
-        <span class="vill-county-badge">${v.county}</span>
-      </div>
-      <div class="vill-status-badge" style="color:${col};border-color:${col}20;background:${col}10">${v.access_status}</div>
-      <div class="vill-metrics">
-        <div class="vill-metric">
-          <div class="vill-metric-val">${v.population.toLocaleString()}</div>
-          <div class="vill-metric-lbl">residents</div>
-        </div>
-        <div class="vill-metric">
-          <div class="vill-metric-val">${v.water_need_m3_day}</div>
-          <div class="vill-metric-lbl">m³/day needed</div>
-        </div>
-        <div class="vill-metric">
-          <div class="vill-metric-val">${_allSprings.filter(s => s.linked_village_id === v.id).length}</div>
-          <div class="vill-metric-lbl">sources</div>
-        </div>
-      </div>
-      <button class="vill-select-btn" onclick="selectVillageById('${v.id}')">
-        <svg viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
-        View on map
-      </button>
-    </div>`;
-  }).join('');
-}
-
+/* ── BELOW-MAP PANELS ────────────────────────────── */
 function renderSourcesPanel(springs) {
-  document.getElementById('sources-count').textContent = `${springs.length} source${springs.length !== 1 ? 's' : ''}`;
-  document.getElementById('sources-grid').innerHTML = springs.map(sp => {
+  document.getElementById('sources-count').textContent = `${springs.length} detected`;
+  document.getElementById('sources-list').innerHTML = springs.map(sp => {
     const col = TYPE_COLOR[sp.type] ?? '#2563eb';
     const cc  = confColor(sp.confidence);
-    const statusLabel = STATUS_LABEL[sp.status] ?? sp.status;
     return `
-    <div class="src-item-card" onclick="focusSource('${sp.id}')" title="View ${sp.name} on map">
-      <div class="src-item-top">
-        <div class="src-item-icon" style="background:${col}18;color:${col}">${TYPE_ICON[sp.type] ?? TYPE_ICON.spring}</div>
-        <div class="src-item-meta">
-          <div class="src-item-name">${sp.name}</div>
-          <div class="src-item-village">${sp.nearest_village} &middot; ${sp.type}</div>
-        </div>
+    <div class="bm-src-row">
+      <div class="bm-src-icon" style="background:${col}18;color:${col}">${TYPE_ICON[sp.type] ?? TYPE_ICON.spring}</div>
+      <div class="bm-src-info">
+        <div class="bm-src-name">${sp.name}</div>
+        <div class="bm-src-meta">${sp.nearest_village} &middot; ${sp.type}</div>
       </div>
-      <div class="src-item-stats">
-        <div class="src-item-stat">
-          <div class="src-item-stat-val">${sp.reserve}</div>
-          <div class="src-item-stat-lbl">m³/day</div>
-        </div>
-        <div class="src-item-stat">
-          <div class="src-item-stat-val" style="color:${cc}">${sp.confidence}%</div>
-          <div class="src-item-stat-lbl">confidence</div>
-        </div>
-        <div class="src-item-stat">
-          <div class="src-item-stat-val">${sp.elevation_m}m</div>
-          <div class="src-item-stat-lbl">elevation</div>
-        </div>
+      <div class="bm-src-stats">
+        <span class="bm-src-reserve">${sp.reserve} <em>m³/d</em></span>
+        <span class="bm-src-conf" style="color:${cc}">${sp.confidence}%</span>
       </div>
-      <span class="src-item-status sbadge sbadge-${sp.status}">${statusLabel}</span>
+      <span class="sbadge sbadge-${sp.status}">${STATUS_LABEL[sp.status] ?? sp.status}</span>
     </div>`;
   }).join('');
 }
 
-function focusSource(id) {
-  const sp = getSpringById(id);
-  if (!sp) return;
-  leafletMap.setView([sp.lat, sp.lon], 13, { animate: true });
+function renderOverviewStats(springs, villages) {
+  const total       = springs.length;
+  const totalRes    = springs.reduce((s, sp) => s + sp.reserve, 0);
+  const avgConf     = Math.round(springs.reduce((s, sp) => s + sp.confidence, 0) / total);
+  const verified    = springs.filter(sp => sp.status === 'verified').length;
+  const highPrio    = springs.filter(sp => sp.status === 'high_priority').length;
+  const pending     = springs.filter(sp => sp.status === 'pending').length;
+  const best        = springs.reduce((a, b) => b.reserve > a.reserve ? b : a);
+  const totalNeed   = villages.reduce((s, v) => s + v.water_need_m3_day, 0);
+  const coverage    = Math.min(100, Math.round(totalRes / totalNeed * 100));
+
+  document.getElementById('overview-stats').innerHTML = `
+    <div class="ov-big-stat">
+      <div class="ov-big-val">${total}</div>
+      <div class="ov-big-lbl">Total Detected Sources</div>
+    </div>
+    <div class="ov-divider"></div>
+    <div class="ov-grid">
+      <div class="ov-cell">
+        <div class="ov-cell-val">${totalRes.toLocaleString()}</div>
+        <div class="ov-cell-lbl">Total capacity (m³/day)</div>
+      </div>
+      <div class="ov-cell">
+        <div class="ov-cell-val">${avgConf}%</div>
+        <div class="ov-cell-lbl">Avg. confidence</div>
+      </div>
+      <div class="ov-cell">
+        <div class="ov-cell-val">${coverage}%</div>
+        <div class="ov-cell-lbl">Village need covered</div>
+      </div>
+    </div>
+    <div class="ov-divider"></div>
+    <div class="ov-status-row">
+      <div class="ov-status-item">
+        <div class="ov-status-dot" style="background:#2563eb"></div>
+        <div class="ov-status-info">
+          <div class="ov-status-val">${verified}</div>
+          <div class="ov-status-lbl">Verified</div>
+        </div>
+      </div>
+      <div class="ov-status-item">
+        <div class="ov-status-dot" style="background:#dc2626"></div>
+        <div class="ov-status-info">
+          <div class="ov-status-val">${highPrio}</div>
+          <div class="ov-status-lbl">High Priority</div>
+        </div>
+      </div>
+      <div class="ov-status-item">
+        <div class="ov-status-dot" style="background:#b45309"></div>
+        <div class="ov-status-info">
+          <div class="ov-status-val">${pending}</div>
+          <div class="ov-status-lbl">Pending</div>
+        </div>
+      </div>
+    </div>
+    <div class="ov-divider"></div>
+    <div class="ov-best">
+      <div class="ov-best-lbl">Highest Output Source</div>
+      <div class="ov-best-val">${best.name}</div>
+      <div class="ov-best-meta">${best.reserve} m³/day &middot; ${best.nearest_village} &middot; ${best.confidence}% confidence</div>
+    </div>`;
 }
 
 /* ── INIT ────────────────────────────────────────── */
@@ -702,8 +708,8 @@ async function init() {
   addVillageMarkers(_allVillages);
   addSourceMarkers(_allSprings);
   renderVillageSelectPanel();
-  renderCommunitiesPanel(_allVillages);
   renderSourcesPanel(_allSprings);
+  renderOverviewStats(_allSprings, _allVillages);
   initLocationSearch();
 }
 

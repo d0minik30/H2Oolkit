@@ -84,29 +84,33 @@
 
   </div>
 
-  <!-- COMMUNITIES LIST -->
-  <section class="data-section">
-    <div class="ds-header">
-      <div class="ds-title">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
-        Communities
-      </div>
-      <span class="ds-count" id="communities-count"></span>
-    </div>
-    <div class="communities-grid" id="communities-grid"><!-- populated by app.js --></div>
-  </section>
+  <!-- BELOW-MAP: sources list + overview stats -->
+  <div class="below-map-grid">
 
-  <!-- WATER SOURCES LIST -->
-  <section class="data-section">
-    <div class="ds-header">
-      <div class="ds-title">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2c-5.33 4.55-8 8.48-8 11.8 0 4.98 3.8 8.2 8 8.2s8-3.22 8-8.2C20 10.48 17.33 6.55 12 2z"/></svg>
-        Water Sources
+    <!-- LEFT: all water sources -->
+    <div class="bm-card">
+      <div class="bm-card-header">
+        <div class="bm-card-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2c-5.33 4.55-8 8.48-8 11.8 0 4.98 3.8 8.2 8 8.2s8-3.22 8-8.2C20 10.48 17.33 6.55 12 2z"/></svg>
+          Water Sources
+        </div>
+        <span class="bm-count" id="sources-count"></span>
       </div>
-      <span class="ds-count" id="sources-count"></span>
+      <div class="bm-sources-list" id="sources-list"><!-- populated by app.js --></div>
     </div>
-    <div class="sources-grid" id="sources-grid"><!-- populated by app.js --></div>
-  </section>
+
+    <!-- RIGHT: overview stats -->
+    <div class="bm-card">
+      <div class="bm-card-header">
+        <div class="bm-card-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+          Overview
+        </div>
+      </div>
+      <div id="overview-stats"><!-- populated by app.js --></div>
+    </div>
+
+  </div>
 
 
 </main>
