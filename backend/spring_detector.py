@@ -8,7 +8,7 @@ _W_SOIL = 0.30
 _W_JRC = 0.20
 _W_TOPO = 0.15
 
-_RIVER_PENALTY_THRESHOLD_M = 200.0
+_RIVER_PENALTY_THRESHOLD_M = 300.0
 _RIVER_PENALTY = 0.30
 
 
@@ -92,13 +92,15 @@ def _score_soil_moisture(soil_moisture_summer: float) -> float:
 
 
 def _score_jrc_occurrence(jrc_occurrence: float) -> float:
-    """JRC occurrence 0–100 %; moderate values (20–60) favour spring vs river."""
-    if jrc_occurrence <= 0:
+    """JRC occurrence 0–100 %; values 30–70 favour spring; <30 is occasional wetness."""
+    if jrc_occurrence < 30:
+        # Below 30 % = infrequent surface water — likely seasonal runoff, not a spring
         return 0.0
     if jrc_occurrence > 80:
         # Very high = permanent river channel, not a spring
         return 0.2
-    return float(np.clip(jrc_occurrence / 60.0, 0.0, 1.0))
+    # 30–80 %: scale 0–1 over the 30–80 range
+    return float(np.clip((jrc_occurrence - 30.0) / 50.0, 0.0, 1.0))
 
 
 def _score_topography(slope_degrees: float) -> float:

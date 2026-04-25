@@ -326,6 +326,9 @@ def analyze_village_water_supply(
             haversine_m(village_lat, village_lon, source["lat"], source["lon"]), 1
         )
 
+    # Keep only sources inside the scan circle (from the collection point)
+    sources = [s for s in sources if s["distance_m"] <= sr]
+
     # 7. Fetch GEE satellite data for each source and calculate spring probability
     import logging
     log_analyzer = logging.getLogger('h2oolkit')
@@ -366,6 +369,19 @@ def analyze_village_water_supply(
             source["spring_probability"] = 0.3
             source["gee_available"] = False
 
+    # Tiered filter: EU-Hydro native sources are authoritative and always kept.
+    # OSM sources confirmed by EU-Hydro need >= 0.50. Unlinked/satellite-only
+    # sources need >= 0.70 — below that the signal is likely just ambient humidity.
+    def _passes_probability_filter(s: dict) -> bool:
+        prob = s.get("spring_probability", 0.0)
+        if s.get("osm_type") == "eu_hydro":
+            return True
+        if s.get("eu_hydro_linked") is True:
+            return prob >= 0.50
+        return prob >= 0.70
+
+    sources = [s for s in sources if _passes_probability_filter(s)]
+
     # 8. Rank by supply efficiency (now includes spring probability component)
     ranked = rank_water_sources(sources, village, weather)
 
@@ -387,6 +403,9 @@ def analyze_village_water_supply(
                 source["cost"],
                 source.get("satellite_data", {})
             ), 1)
+
+    # Show only the top 15 sources
+    ranked = ranked[:15]
 
     best = ranked[0] if ranked else None
     alternatives = ranked[1:4]  # up to 3 alternatives shown

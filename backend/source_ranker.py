@@ -31,8 +31,8 @@ _WEIGHTS = {
 # How intermittent sources are penalised on their reliability score
 _INTERMITTENT_PENALTY = 0.20
 
-# Small bonus applied to springs not found in the official EU-Hydro network
-_EU_HYDRO_UNLINKED_BONUS = 0.05
+# Bonus for springs not in the official EU-Hydro network (undiscovered sources)
+_EU_HYDRO_UNLINKED_BONUS = 0.10
 
 
 def rank_water_sources(
