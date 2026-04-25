@@ -1,0 +1,32 @@
+[
+  {
+    "id": "VL-001", "name": "Nereju", "county": "Vrancea",
+    "lat": 45.754, "lon": 26.861,
+    "population": 1240, "water_need_m3_day": 62, "access_status": "No piped water",
+    "polygon": [[26.840,45.742],[26.882,45.742],[26.882,45.766],[26.840,45.766],[26.840,45.742]]
+  },
+  {
+    "id": "VL-002", "name": "Corund", "county": "Harghita",
+    "lat": 46.367, "lon": 25.813,
+    "population": 1100, "water_need_m3_day": 55, "access_status": "Seasonal shortages",
+    "polygon": [[25.795,46.354],[25.831,46.354],[25.831,46.380],[25.795,46.380],[25.795,46.354]]
+  },
+  {
+    "id": "VL-003", "name": "Deda", "county": "Mureș",
+    "lat": 46.880, "lon": 25.111,
+    "population": 1440, "water_need_m3_day": 72, "access_status": "No piped water",
+    "polygon": [[25.090,46.866],[25.132,46.866],[25.132,46.894],[25.090,46.894],[25.090,46.866]]
+  },
+  {
+    "id": "VL-004", "name": "Moldovița", "county": "Suceava",
+    "lat": 47.660, "lon": 25.540,
+    "population": 1130, "water_need_m3_day": 57, "access_status": "Insufficient pressure",
+    "polygon": [[25.523,47.648],[25.557,47.648],[25.557,47.672],[25.523,47.672],[25.523,47.648]]
+  },
+  {
+    "id": "VL-005", "name": "Bixad", "county": "Covasna",
+    "lat": 45.851, "lon": 26.051,
+    "population": 1580, "water_need_m3_day": 79, "access_status": "Insufficient pressure",
+    "polygon": [[26.033,45.839],[26.069,45.839],[26.069,45.863],[26.033,45.863],[26.033,45.839]]
+  }
+]

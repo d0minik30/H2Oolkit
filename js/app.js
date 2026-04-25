@@ -1,20 +1,22 @@
 /* app.js — H2Oolkit */
 
-const MAX_RESERVE = 700;
+const MAX_RESERVE = 900;
 
 const STATUS_LABEL = { verified: 'Verified', high_priority: 'High Priority', pending: 'Pending Review' };
 const STATUS_COLOR = { verified: '#2563eb', high_priority: '#dc2626', pending: '#b45309' };
+
+const TYPE_ICON = {
+  spring:    `<svg viewBox="0 0 24 24"><path d="M12 2c-5.33 4.55-8 8.48-8 11.8 0 4.98 3.8 8.2 8 8.2s8-3.22 8-8.2C20 10.48 17.33 6.55 12 2z"/></svg>`,
+  stream:    `<svg viewBox="0 0 24 24"><path d="M1.5 12c0-1 .8-1.8 1.8-1.8C5.1 10.2 5 12 7 12s2-1.8 3.8-1.8S13 12 15 12s2-1.8 3.8-1.8c1 0 1.8.8 1.8 1.8s-.8 1.8-1.8 1.8C17 13.8 17 16 15 16s-2-1.8-3.8-1.8S9 16 7 16s-2-1.8-3.8-1.8c-.9 0-1.7-.8-1.7-1.8z"/></svg>`,
+  lake:      `<svg viewBox="0 0 24 24"><ellipse cx="12" cy="14" rx="9" ry="5"/><path d="M12 2C9 2 6 5 6 9c0 3 3 5 6 5s6-2 6-5c0-4-3-7-6-7z"/></svg>`,
+  reservoir: `<svg viewBox="0 0 24 24"><path d="M4 4h16v4H4zm0 6h16v10H4z"/></svg>`
+};
+const TYPE_COLOR = { spring: '#2563eb', stream: '#0284c7', lake: '#0891b2', reservoir: '#059669' };
 
 const GEOLOGY_LABEL = {
   limestone_karst: 'Limestone Karst', alluvial_gravel: 'Alluvial Gravel',
   crystalline_schist: 'Crystalline Schist', volcanic_tuff: 'Volcanic Tuff',
   flysch_sandstone: 'Flysch Sandstone', granite_gneiss: 'Granite Gneiss'
-};
-
-const ACCESS_COLOR = {
-  'No piped water':       '#dc2626',
-  'Seasonal shortages':   '#b45309',
-  'Insufficient pressure':'#d97706'
 };
 
 function fmtCost(n) { return '€' + n.toLocaleString('de-DE'); }
@@ -28,40 +30,36 @@ function breakdown(total) {
   const pipeline = Math.round(total * 0.668), pump = Math.round(total * 0.197);
   return { pipeline, pump, treatment: total - pipeline - pump };
 }
-function fmtPassDate(utc) { return new Date(utc).toISOString().replace('T',' ').slice(0,16) + ' UTC'; }
+function fmtPassDate(utc) { return new Date(utc).toISOString().replace('T', ' ').slice(0, 16) + ' UTC'; }
 
-/* ── SEARCH (springs filter) ─────────────────────── */
-let _allSprings = [];
-
-function filterSprings(q) {
-  const s = q.toLowerCase().trim();
-  if (!s) return _allSprings;
-  return _allSprings.filter(sp =>
-    sp.name.toLowerCase().includes(s) || sp.region.toLowerCase().includes(s) ||
-    sp.id.toLowerCase().includes(s) || sp.status.replace('_',' ').toLowerCase().includes(s) ||
-    (sp.nearest_village && sp.nearest_village.toLowerCase().includes(s))
-  );
-}
-
-function updateSearch(query) {
-  const filtered = filterSprings(query);
-  renderTable(filtered);
-  _allSprings.forEach(sp => {
-    markerRefs[sp.id]?.setOpacity(filtered.find(f => f.id === sp.id) ? 1 : 0.18);
-  });
-  const status = document.getElementById('search-status');
-  status.innerHTML = (query.trim() && filtered.length < _allSprings.length)
-    ? `<span class="search-count">${filtered.length} of ${_allSprings.length} match</span>` : '';
-  const lbl = document.getElementById('map-filter-label');
-  if (lbl) lbl.textContent = query.trim() ? `${filtered.length} result${filtered.length !== 1 ? 's' : ''} shown` : '';
-}
+/* ── STATE ───────────────────────────────────────── */
+let appState = 'village-select'; // 'village-select' | 'point-select' | 'sources-visible'
+let selectedVillage = null;
+let collectionPoint = null;
+let collectionMarker = null;
+let _allVillages = [];
 
 /* ── MAP ─────────────────────────────────────────── */
 let leafletMap;
 const markerRefs = {};
+const villageMarkerRefs = {};
+let _villageHighlight = null;
+let _villageRadiusRing = null;
+
+const ROMANIA_BOUNDS = L.latLngBounds([43.6, 20.2], [48.3, 30.0]);
+
+function haversineKm(lat1, lon1, lat2, lon2) {
+  const R = 6371, toRad = d => d * Math.PI / 180;
+  const dLat = toRad(lat2 - lat1), dLon = toRad(lon2 - lon1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
 
 function initMap() {
-  leafletMap = L.map('map', { center: [46.0, 25.0], zoom: 7, zoomControl: true });
+  leafletMap = L.map('map', {
+    center: [46.0, 25.0], zoom: 7, zoomControl: true,
+    maxBounds: ROMANIA_BOUNDS, maxBoundsViscosity: 1.0, minZoom: 6
+  });
 
   L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
     attribution: 'Imagery &copy; Esri', maxZoom: 19
@@ -75,79 +73,169 @@ function initMap() {
   legend.onAdd = () => {
     const d = L.DomUtil.create('div', 'map-legend');
     d.innerHTML = `
-      <div class="legend-title">Map Legend</div>
-      <div class="legend-item"><div class="legend-source" style="background:#2563eb"><svg viewBox="0 0 24 24" style="width:7px;height:7px;fill:rgba(255,255,255,.9)"><path d="M12 2c-1 2-5 6.5-5 9.5a5 5 0 0010 0C17 8.5 13 4 12 2z"/></svg></div>Water Source (Spring)</div>
-      <div class="legend-item"><div style="width:20px;height:2px;border-top:2px dashed #94a3b8;flex-shrink:0"></div>Supply Route</div>
-      <div class="legend-section" style="margin-top:5px">Villages</div>
-      <div class="legend-item"><div class="legend-zone"></div>Water Need Zone</div>`;
+      <div class="legend-title">Legend</div>
+      <div class="legend-item"><div class="legend-village-dot"></div>Village</div>
+      <div class="legend-item"><div class="legend-source" style="background:#2563eb"></div>Spring</div>
+      <div class="legend-item"><div class="legend-source" style="background:#0284c7"></div>Stream</div>
+      <div class="legend-item"><div class="legend-source" style="background:#0891b2"></div>Lake / Reservoir</div>`;
     return d;
   };
   legend.addTo(leafletMap);
 }
 
-function addMarkers(springs) {
-  springs.forEach(sp => {
+/* ── VILLAGE MARKERS ─────────────────────────────── */
+function addVillageMarkers(villages) {
+  villages.forEach(v => {
     const icon = L.divIcon({
-      html: `<div style="position:relative;width:26px;height:26px;"><div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:19px;height:19px;background:#2563eb;border:2.5px solid #fff;border-radius:50%;box-shadow:0 0 0 2.5px rgba(37,99,235,.35),0 2px 9px rgba(0,0,0,.45);cursor:pointer;display:flex;align-items:center;justify-content:center;"><svg viewBox="0 0 24 24" style="width:9px;height:9px;fill:rgba(255,255,255,.9)"><path d="M12 2c-1 2-5 6.5-5 9.5a5 5 0 0010 0C17 8.5 13 4 12 2z"/></svg></div></div>`,
-      className: '', iconSize: [26, 26], iconAnchor: [13, 13], popupAnchor: [0, -17]
+      html: `<div class="vm-marker"><svg viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg></div>`,
+      className: '', iconSize: [34, 34], iconAnchor: [17, 17]
+    });
+    const m = L.marker([v.lat, v.lon], { icon, zIndexOffset: 500 }).addTo(leafletMap)
+      .bindTooltip(`<b>${v.name}</b><br>${v.county} — ${v.population.toLocaleString()} res.`, { sticky: true, className: 'line-tooltip' });
+    m.on('click', () => enterPointSelect(v));
+    villageMarkerRefs[v.id] = m;
+
+    const latlngs = v.polygon.map(([lon, lat]) => [lat, lon]);
+    L.polygon(latlngs, {
+      color: '#f59e0b', weight: 1.8, dashArray: '5 4',
+      fillColor: '#f59e0b', fillOpacity: 0.07, interactive: false
+    }).addTo(leafletMap);
+  });
+}
+
+/* ── WATER SOURCE MARKERS ────────────────────────── */
+function addSourceMarkers(springs) {
+  springs.forEach(sp => {
+    const col = TYPE_COLOR[sp.type] ?? '#2563eb';
+    const icon = L.divIcon({
+      html: `<div class="src-marker" style="background:${col}"><svg viewBox="0 0 24 24" style="width:9px;height:9px;fill:#fff"><path d="M12 2c-1 2-5 6.5-5 9.5a5 5 0 0010 0C17 8.5 13 4 12 2z"/></svg></div>`,
+      className: '', iconSize: [22, 22], iconAnchor: [11, 11], popupAnchor: [0, -14]
     });
 
-    const popup = `
-      <div class="popup-title">${sp.name} — ${sp.region}</div>
-      <div class="popup-row"><span class="popup-k">Water Reserve</span><span class="popup-v">${sp.reserve} m³/day</span></div>
-      <div class="popup-row"><span class="popup-k">Confidence</span><span class="popup-v">${sp.confidence}% (SAR)</span></div>
-      <div class="popup-row"><span class="popup-k">Distance to Village</span><span class="popup-v">${sp.distance_km} km</span></div>
-      <div class="popup-row"><span class="popup-k">Est. Cost</span><span class="popup-v">${fmtCost(sp.cost_eur)}</span></div>
-      ${sp.nearest_village ? `<div class="popup-row"><span class="popup-k">Nearest Village</span><span class="popup-v">${sp.nearest_village}</span></div>` : ''}
-      <div class="popup-badge"><span class="sbadge sbadge-${sp.status}">${STATUS_LABEL[sp.status]}</span></div>`;
+    const distKm = () => collectionPoint
+      ? haversineKm(collectionPoint.lat, collectionPoint.lon, sp.lat, sp.lon).toFixed(1)
+      : sp.distance_km;
 
-    const marker = L.marker([sp.lat, sp.lon], { icon }).addTo(leafletMap).bindPopup(popup);
-    marker.on('click', () => selectSpring(sp));
-    markerRefs[sp.id] = marker;
+    const m = L.marker([sp.lat, sp.lon], { icon }).addTo(leafletMap);
+    m.setOpacity(0);
+    m.on('click', () => {
+      if (appState !== 'sources-visible') return;
+      selectSource(sp);
+      const z = Math.min(leafletMap.getZoom() + 1, 13);
+      leafletMap.setView([sp.lat, sp.lon], z, { animate: true, duration: 0.4 });
+    });
+    markerRefs[sp.id] = m;
   });
 }
 
-function addConnectionLines(springs, zones) {
-  const springIndex = {};
-  springs.forEach(sp => { springIndex[sp.id] = sp; });
+/* ── STATE: VILLAGE SELECT ───────────────────────── */
+function enterVillageSelect() {
+  appState = 'village-select';
+  selectedVillage = null;
+  collectionPoint = null;
 
-  zones.forEach(feature => {
-    const p = feature.properties;
-    const sp = springIndex[p.linked_spring_id];
-    if (!sp) return;
+  if (collectionMarker) { leafletMap.removeLayer(collectionMarker); collectionMarker = null; }
+  if (_villageHighlight) { leafletMap.removeLayer(_villageHighlight); _villageHighlight = null; }
+  if (_villageRadiusRing) { leafletMap.removeLayer(_villageRadiusRing); _villageRadiusRing = null; }
 
-    const coords = feature.geometry.coordinates[0];
-    const lons = coords.map(c => c[0]);
-    const lats = coords.map(c => c[1]);
-    const centerLat = (Math.min(...lats) + Math.max(...lats)) / 2;
-    const centerLon = (Math.min(...lons) + Math.max(...lons)) / 2;
+  leafletMap.off('click', onMapClickForPoint);
+  document.getElementById('map').style.cursor = '';
+  hideMapInstruction();
 
-    L.polyline([[sp.lat, sp.lon], [centerLat, centerLon]], {
-      color: '#94a3b8', weight: 1.6, dashArray: '5 5', opacity: 0.7
-    }).addTo(leafletMap).bindTooltip(
-      `${sp.name} → ${p.village_name} &nbsp;·&nbsp; ${sp.distance_km} km &nbsp;·&nbsp; ${fmtCost(sp.cost_eur)}`,
-      { sticky: true, className: 'line-tooltip' }
-    );
-  });
+  _allSprings.forEach(sp => markerRefs[sp.id]?.setOpacity(0));
+  renderVillageSelectPanel();
 }
 
-function addVillageZones(zones) {
-  zones.forEach(feature => {
-    const latlngs = feature.geometry.coordinates[0].map(([lon, lat]) => [lat, lon]);
-    const p = feature.properties;
+/* ── STATE: POINT SELECT ─────────────────────────── */
+function enterPointSelect(village) {
+  appState = 'point-select';
+  selectedVillage = village;
+  collectionPoint = null;
 
-    L.polygon(latlngs, {
-      color: '#dc2626', weight: 1.8, dashArray: '6 4',
-      fillColor: '#dc2626', fillOpacity: 0.10
-    }).addTo(leafletMap).bindPopup(`
-      <div class="popup-title" style="color:#dc2626">&#9888; ${p.village_name}</div>
-      <div class="popup-row"><span class="popup-k">County</span><span class="popup-v">${p.county}</span></div>
-      <div class="popup-row"><span class="popup-k">Population</span><span class="popup-v">${p.population.toLocaleString()} residents</span></div>
-      <div class="popup-row"><span class="popup-k">Water Need</span><span class="popup-v">${p.water_need_m3_day} m³/day</span></div>
-      <div class="popup-row"><span class="popup-k">Status</span><span class="popup-v" style="color:#dc2626;font-weight:700">${p.access_status}</span></div>
-      <div class="popup-row"><span class="popup-k">Linked Spring</span><span class="popup-v">${p.linked_spring_id}</span></div>
-    `);
+  if (collectionMarker) { leafletMap.removeLayer(collectionMarker); collectionMarker = null; }
+  if (_villageRadiusRing) { leafletMap.removeLayer(_villageRadiusRing); _villageRadiusRing = null; }
+  _allSprings.forEach(sp => markerRefs[sp.id]?.setOpacity(0));
+
+  if (_villageHighlight) { leafletMap.removeLayer(_villageHighlight); }
+  const latlngs = village.polygon.map(([lon, lat]) => [lat, lon]);
+  _villageHighlight = L.polygon(latlngs, {
+    color: '#dc2626', weight: 2.5,
+    fillColor: '#dc2626', fillOpacity: 0.18
+  }).addTo(leafletMap);
+
+  leafletMap.flyTo([village.lat, village.lon], 13, { duration: 1.0 });
+  leafletMap.on('click', onMapClickForPoint);
+  document.getElementById('map').style.cursor = 'crosshair';
+  showMapInstruction('Click on the map to set your water collection point');
+
+  renderPointSelectPanel(village);
+}
+
+function onMapClickForPoint(e) {
+  if (appState !== 'point-select') return;
+  setCollectionPoint(e.latlng.lat, e.latlng.lng);
+}
+
+function setCollectionPoint(lat, lon) {
+  leafletMap.off('click', onMapClickForPoint);
+  document.getElementById('map').style.cursor = '';
+  hideMapInstruction();
+
+  collectionPoint = { lat, lon };
+
+  if (collectionMarker) leafletMap.removeLayer(collectionMarker);
+  const icon = L.divIcon({
+    html: `<div class="cp-marker"><svg viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5S10.62 6.5 12 6.5s2.5 1.12 2.5 2.5S13.38 11.5 12 11.5z"/></svg></div>`,
+    className: '', iconSize: [32, 32], iconAnchor: [16, 32]
   });
+  collectionMarker = L.marker([lat, lon], { icon, zIndexOffset: 2000 }).addTo(leafletMap)
+    .bindTooltip('Collection point', { permanent: false, className: 'line-tooltip' });
+
+  enterSourcesVisible(lat, lon);
+}
+
+/* ── STATE: SOURCES VISIBLE ──────────────────────── */
+function enterSourcesVisible(lat, lon) {
+  appState = 'sources-visible';
+
+  let nearby = _allSprings.filter(sp => haversineKm(lat, lon, sp.lat, sp.lon) <= 10);
+  let fallback = false;
+
+  if (nearby.length === 0) {
+    fallback = true;
+    nearby = [..._allSprings]
+      .sort((a, b) => haversineKm(lat, lon, a.lat, a.lon) - haversineKm(lat, lon, b.lat, b.lon))
+      .slice(0, 3);
+  }
+
+  _allSprings.forEach(sp => {
+    const show = nearby.find(n => n.id === sp.id);
+    markerRefs[sp.id]?.setOpacity(show ? 1 : 0);
+  });
+
+  if (_villageRadiusRing) leafletMap.removeLayer(_villageRadiusRing);
+  _villageRadiusRing = L.circle([lat, lon], {
+    radius: 10000, color: '#2563eb', weight: 1.5, dashArray: '7 5',
+    fillOpacity: 0, interactive: false
+  }).addTo(leafletMap);
+
+  renderSourceListPanel(nearby, lat, lon, fallback);
+}
+
+/* ── MAP INSTRUCTION OVERLAY ─────────────────────── */
+function showMapInstruction(text) {
+  let el = document.getElementById('map-instruction');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'map-instruction';
+    document.getElementById('map').appendChild(el);
+  }
+  el.textContent = text;
+  el.style.display = 'block';
+}
+function hideMapInstruction() {
+  const el = document.getElementById('map-instruction');
+  if (el) el.style.display = 'none';
 }
 
 /* ── LOCATION SEARCH (map geocoding) ─────────────── */
@@ -159,11 +247,24 @@ function initLocationSearch() {
   input.addEventListener('input', () => {
     clearTimeout(timer);
     const q = input.value.trim();
-    if (q.length < 3) { results.style.display = 'none'; results.innerHTML = ''; return; }
-    timer = setTimeout(() => geocodeSearch(q, results), 380);
+    if (q.length < 2) {
+      results.style.display = 'none';
+      results.innerHTML = '';
+      if (q.length === 0) {
+        if (_villageHighlight) { leafletMap.removeLayer(_villageHighlight); _villageHighlight = null; }
+      }
+      return;
+    }
+    timer = setTimeout(() => geocodeSearch(q, results), 340);
   });
 
-  input.addEventListener('keydown', e => { if (e.key === 'Escape') { results.style.display = 'none'; input.blur(); } });
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+      results.style.display = 'none';
+      input.value = '';
+      input.blur();
+    }
+  });
 
   document.addEventListener('click', e => {
     if (!e.target.closest('#map-overlay-search')) results.style.display = 'none';
@@ -171,272 +272,218 @@ function initLocationSearch() {
 
   const overlay = document.getElementById('map-overlay-search');
   if (overlay) {
-    overlay.addEventListener('click',      e => e.stopPropagation());
-    overlay.addEventListener('mousedown',  e => e.stopPropagation());
-    overlay.addEventListener('dblclick',   e => e.stopPropagation());
-    overlay.addEventListener('wheel',      e => e.stopPropagation());
+    ['click', 'mousedown', 'dblclick', 'wheel'].forEach(ev =>
+      overlay.addEventListener(ev, e => e.stopPropagation()));
   }
 }
 
 async function geocodeSearch(q, results) {
+  const s = q.toLowerCase();
+  const villageHits = _allVillages.filter(v =>
+    v.name.toLowerCase().includes(s) || v.county.toLowerCase().includes(s));
+
   try {
-    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q + ', Romania')}&format=json&limit=6&countrycodes=ro`;
-    const res  = await fetch(url, { headers: { 'Accept-Language': 'en' } });
-    const data = await res.json();
-    if (!data.length) {
+    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q + ', Romania')}&format=json&limit=5&countrycodes=ro`;
+    const data = await (await fetch(url, { headers: { 'Accept-Language': 'en' } })).json();
+
+    let html = '';
+    villageHits.forEach(v => {
+      html += `<div class="mos-item mos-village-hit" onclick="selectVillageById('${v.id}');document.getElementById('location-results').style.display='none';document.getElementById('location-search').value='${v.name}';">
+        <svg class="mos-pin" viewBox="0 0 24 24" style="fill:#f59e0b"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
+        <div><div class="mos-name">${v.name}</div><div class="mos-region">${v.county} County · ${v.population.toLocaleString()} residents</div></div>
+      </div>`;
+    });
+
+    if (!data.length && !villageHits.length) {
       results.innerHTML = '<div class="mos-no-result">No results in Romania</div>';
       results.style.display = 'block'; return;
     }
-    results.innerHTML = data.map(r => {
+
+    data.slice(0, 4).forEach(r => {
       const parts = r.display_name.split(',');
-      return `<div class="mos-item" onclick="flyTo(${r.lat},${r.lon},'${parts[0].replace(/'/g,"\\'")}')">
+      html += `<div class="mos-item" onclick="flyToLocation(${r.lat},${r.lon},'${parts[0].replace(/'/g, "\\'")}')">
         <svg class="mos-pin" viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/></svg>
-        <div><div class="mos-name">${parts[0]}</div><div class="mos-region">${parts.slice(1,3).join(',').trim()}</div></div>
+        <div><div class="mos-name">${parts[0]}</div><div class="mos-region">${parts.slice(1, 3).join(',').trim()}</div></div>
       </div>`;
-    }).join('');
+    });
+
+    results.innerHTML = html;
     results.style.display = 'block';
   } catch (e) {
-    console.warn('[geocode] Failed:', e.message);
+    console.warn('[geocode]', e.message);
   }
 }
 
-async function flyTo(lat, lon, name) {
-  leafletMap.flyTo([parseFloat(lat), parseFloat(lon)], 13, { duration: 1.4 });
+function selectVillageById(id) {
+  const v = _allVillages.find(v => v.id === id);
+  if (v) enterPointSelect(v);
+}
+
+function flyToLocation(lat, lon, name) {
+  leafletMap.flyTo([parseFloat(lat), parseFloat(lon)], 12, { duration: 1.2 });
   document.getElementById('location-results').style.display = 'none';
   document.getElementById('location-search').value = name;
-
-  if (!(await H2O.checkBackend())) return;
-  runLocationAnalysis(parseFloat(lat), parseFloat(lon), name);
 }
 
-async function runLocationAnalysis(lat, lon, name) {
-  setBackendStatus('working', 'Scanning water sources…');
+/* ── DETAIL PANEL RENDERS ────────────────────────── */
+function renderVillageSelectPanel() {
   document.getElementById('detail-panel').innerHTML = `
-    <div class="dp-header">
-      <div>
-        <div class="dp-title">${name}</div>
-        <div class="dp-sub">Scanning 10 km radius for water sources…</div>
+    <div class="dp-welcome">
+      <div class="dp-welcome-icon">
+        <svg viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
       </div>
-    </div>
-    <p class="live-loading" style="padding:16px">Querying OSM, elevation &amp; precipitation data…</p>`;
-
-  try {
-    const result = await H2O.analyzeLocation({ lat, lon, name, radius_m: 5000 });
-    document.getElementById('detail-panel').innerHTML = renderLocationAnalysis(result);
-    setBackendStatus('online', 'Scan complete');
-  } catch (err) {
-    document.getElementById('detail-panel').innerHTML = `
-      <div class="dp-section live-analysis-warn" style="padding:16px">
-        <div class="dp-section-label">Location Analysis</div>
-        <p>Failed: ${err.message}</p>
-      </div>`;
-    setBackendStatus('error', 'Scan failed');
-  }
-}
-
-function renderLocationAnalysis(r) {
-  const loc    = r.query_location ?? {};
-  const best   = r.best_option;
-  const alts   = r.alternatives ?? [];
-  const ranked = r.ranked_sources ?? [];
-  const wx     = r.weather ?? {};
-  const fmtEur = n => '€' + (n ?? 0).toLocaleString('de-DE');
-  const fmtL   = n => (n ?? 0).toLocaleString() + ' L/day';
-
-  const supplyColor = s =>
-    s === 'viable' ? '#059669' : s === 'marginal' ? '#b45309' : '#dc2626';
-
-  const sourceRows = ranked.slice(0, 8).map((src, i) => {
-    const c = src.cost ?? {};
-    const rt = src.route ?? {};
-    const feasColor = supplyColor(c.feasibility);
-    return `
-      <div class="vc-row" style="align-items:flex-start;padding:8px 0;border-bottom:1px solid var(--border)">
-        <div class="vc-dot" style="background:${i === 0 ? '#059669' : '#2563eb'};margin-top:4px"></div>
-        <div class="vc-info" style="flex:1;min-width:0">
-          <div class="vc-name" style="font-weight:600">#${i + 1} ${src.name ?? src.source_type}
-            <span class="vc-county" style="text-transform:capitalize">${src.source_type}</span>
-          </div>
-          <div style="font-size:.75rem;color:var(--text-muted);margin-top:2px">
-            ${rt.terrain_adjusted_distance_km?.toFixed(1) ?? '?'} km &middot;
-            Δ${rt.elevation_difference_m?.toFixed(0) ?? '?'} m &middot;
-            ${(src.supply_method ?? '').replace(/_/g, ' ')}
-          </div>
-          <div style="font-size:.75rem;margin-top:2px">
-            Flow: <b>${fmtL(src.estimated_daily_flow_liters)}</b> &nbsp;|&nbsp;
-            Cost: <b>${fmtEur(c.total_cost_eur)}</b>
-            ${c.pnrr_eligible ? ` <span style="color:#059669">(PNRR −85%)</span>` : ''}
-          </div>
-        </div>
-        <div style="flex-shrink:0;text-align:right">
-          <div style="font-size:.78rem;font-weight:700;color:${feasColor}">${(c.feasibility ?? '—').replace(/_/g, ' ')}</div>
-          <div style="font-size:.72rem;color:var(--text-muted)">${((src.efficiency_score ?? 0) * 100).toFixed(0)}% score</div>
-        </div>
-      </div>`;
-  }).join('');
-
-  const noSources = ranked.length === 0 ? `
-    <p style="color:#dc2626;font-size:.83rem;padding:8px 0">
-      No water sources found within 10 km. Try a different location or expand the radius.
-    </p>` : '';
-
-  return `
-    <div class="dp-header">
-      <div>
-        <div class="dp-title">${loc.name ?? 'Location Analysis'}</div>
-        <div class="dp-sub">${loc.lat?.toFixed(4)}° N, ${loc.lon?.toFixed(4)}° E &middot; 10 km scan radius</div>
+      <div class="dp-welcome-title">Select a Village</div>
+      <div class="dp-welcome-text">Click an orange marker on the map or search by village name to begin water source analysis.</div>
+      <div class="dp-welcome-villages">
+        ${_allVillages.map(v => `
+          <button class="dp-village-btn" onclick="selectVillageById('${v.id}')">
+            <span class="dp-vbtn-name">${v.name}</span>
+            <span class="dp-vbtn-county">${v.county}</span>
+          </button>`).join('')}
       </div>
-      <span class="sbadge sbadge-${ranked.length > 0 ? 'verified' : 'pending'}">
-        ${r.sources_found ?? 0} sources
-      </span>
-    </div>
-
-    ${best ? `
-    <div class="dp-section">
-      <div class="dp-section-label">Best Candidate</div>
-      <div class="sat-grid">
-        <div class="sat-cell">
-          <div class="sat-lbl">Source</div>
-          <div class="sat-val" style="text-transform:capitalize">${best.source_type}</div>
-        </div>
-        <div class="sat-cell">
-          <div class="sat-lbl">Daily Flow</div>
-          <div class="sat-val">${fmtL(best.estimated_daily_flow_liters)}</div>
-        </div>
-        <div class="sat-cell">
-          <div class="sat-lbl">Distance</div>
-          <div class="sat-val">${best.route?.terrain_adjusted_distance_km?.toFixed(1) ?? '?'} km</div>
-        </div>
-        <div class="sat-cell">
-          <div class="sat-lbl">Supply</div>
-          <div class="sat-val" style="color:${supplyColor(best.cost?.feasibility)};text-transform:capitalize">
-            ${(best.cost?.feasibility ?? '—').replace(/_/g, ' ')}
-          </div>
-        </div>
-        <div class="sat-cell">
-          <div class="sat-lbl">Total Cost</div>
-          <div class="sat-val">${fmtEur(best.cost?.total_cost_eur)}</div>
-        </div>
-        <div class="sat-cell">
-          <div class="sat-lbl">Village Pays</div>
-          <div class="sat-val">${fmtEur(best.cost?.village_contribution_eur)}</div>
-        </div>
-      </div>
-    </div>` : ''}
-
-    <div class="dp-section">
-      <div class="dp-section-label">Ranked Water Sources</div>
-      ${noSources}
-      ${sourceRows}
-    </div>
-
-    <div class="dp-section">
-      <div class="dp-section-label">Climate</div>
-      <div class="coord-grid">
-        <div class="coord-item"><div class="coord-lbl">Mean Precip.</div>
-          <div class="coord-val">${(wx.mean_annual_precipitation_mm ?? 0).toFixed(0)} mm/yr</div></div>
-        <div class="coord-item"><div class="coord-lbl">Recharge</div>
-          <div class="coord-val">${(wx.estimated_recharge_mm ?? 0).toFixed(0)} mm</div></div>
-        <div class="coord-item"><div class="coord-lbl">Trend</div>
-          <div class="coord-val">${(wx.trend_mm_per_year ?? 0).toFixed(1)} mm/yr</div></div>
-      </div>
-    </div>
-
-    <p class="live-recommendation">${r.recommendation ?? ''}</p>
-  `;
-}
-
-/* ── DETAIL PANEL ────────────────────────────────── */
-function renderDetailPlaceholder() {
-  document.getElementById('detail-panel').innerHTML = `
-    <div class="dp-placeholder">
-      <div class="dp-ph-line" style="width:65%;height:17px;margin-bottom:7px"></div>
-      <div class="dp-ph-line" style="width:42%;height:11px;margin-bottom:22px"></div>
-      <div class="dp-ph-line" style="width:100%;height:74px;margin-bottom:14px"></div>
-      <div class="dp-ph-line" style="width:100%;height:36px;margin-bottom:14px"></div>
-      <div class="dp-ph-line" style="width:100%;height:110px;margin-bottom:14px"></div>
-      <div class="dp-ph-line" style="width:100%;height:90px;margin-bottom:14px"></div>
-      <div class="dp-ph-line" style="width:100%;height:38px"></div>
     </div>`;
 }
 
-function renderDetail(sp) {
-  const bd  = breakdown(sp.cost_eur);
-  const pct = (sp.reserve / MAX_RESERVE * 100).toFixed(1);
-  const cc  = confColor(sp.confidence);
-  const sat = sp.satellite ?? {};
-  const sarPct  = sat.sentinel1_sar_anomaly != null ? (sat.sentinel1_sar_anomaly * 100).toFixed(0) : 0;
-  const ndwiPct = sat.sentinel2_ndwi        != null ? (sat.sentinel2_ndwi        * 100).toFixed(0) : 0;
-  const sarColor = sat.sentinel1_sar_anomaly >= 0.8 ? '#059669' : sat.sentinel1_sar_anomaly >= 0.6 ? '#2563eb' : '#b45309';
+function renderPointSelectPanel(village) {
+  document.getElementById('detail-panel').innerHTML = `
+    <div class="dp-header">
+      <div>
+        <div class="dp-title">${village.name}</div>
+        <div class="dp-sub">${village.county} County &middot; ${village.population.toLocaleString()} residents</div>
+      </div>
+      <button class="dp-back-btn" onclick="enterVillageSelect()">&#8592; Back</button>
+    </div>
+    <div class="dp-instruction-box">
+      <svg viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5S10.62 6.5 12 6.5s2.5 1.12 2.5 2.5S13.38 11.5 12 11.5z"/></svg>
+      <div>
+        <div class="dp-instr-title">Set Collection Point</div>
+        <div class="dp-instr-text">Click anywhere on the map to set your desired water collection point. All sources within 10 km will appear.</div>
+      </div>
+    </div>
+    <div class="dp-section">
+      <div class="dp-section-label">Village Profile</div>
+      <div class="sat-grid">
+        <div class="sat-cell"><div class="sat-lbl">Population</div><div class="sat-val">${village.population.toLocaleString()}</div></div>
+        <div class="sat-cell"><div class="sat-lbl">Daily Need</div><div class="sat-val">${village.water_need_m3_day} m³</div></div>
+        <div class="sat-cell sat-cell-full"><div class="sat-lbl">Water Access</div><div class="sat-val" style="color:#dc2626">${village.access_status}</div></div>
+      </div>
+    </div>`;
+}
+
+function renderSourceListPanel(sources, lat, lon, fallback) {
+  const sorted = sources.map(sp => ({
+    ...sp,
+    calcDist: haversineKm(lat, lon, sp.lat, sp.lon)
+  })).sort((a, b) => a.calcDist - b.calcDist);
+
+  const villageName = selectedVillage?.name ?? '';
 
   document.getElementById('detail-panel').innerHTML = `
     <div class="dp-header">
       <div>
-        <div class="dp-title">${sp.name}</div>
-        <div class="dp-sub">${sp.region} County &middot; ${sp.id}${sp.nearest_village ? ' &middot; ' + sp.nearest_village : ''}</div>
+        <div class="dp-title">Water Sources</div>
+        <div class="dp-sub">${villageName} &middot; ${sorted.length} source${sorted.length !== 1 ? 's' : ''} found${fallback ? ' (nearest — none within 10 km)' : ' within 10 km'}</div>
       </div>
-      <span class="sbadge sbadge-${sp.status}">${STATUS_LABEL[sp.status]}</span>
+      <button class="dp-back-btn" onclick="enterPointSelect(selectedVillage)">&#8592; Back</button>
+    </div>
+    <div class="src-list">
+      ${sorted.map((sp, i) => {
+        const col = TYPE_COLOR[sp.type] ?? '#2563eb';
+        const cc  = confColor(sp.confidence);
+        return `
+        <div class="src-card" id="srcc-${sp.id}" onclick="selectSource(getSpringById('${sp.id}'))">
+          <div class="src-card-left">
+            <div class="src-icon" style="background:${col}20;color:${col}">${TYPE_ICON[sp.type] ?? TYPE_ICON.spring}</div>
+            <div>
+              <div class="src-name">${sp.name}</div>
+              <div class="src-meta">${sp.type.charAt(0).toUpperCase() + sp.type.slice(1)} &middot; ${sp.calcDist.toFixed(1)} km away</div>
+            </div>
+          </div>
+          <div class="src-card-right">
+            <div class="src-reserve">${sp.reserve} <span>m³/d</span></div>
+            <div class="src-conf" style="color:${cc}">${sp.confidence}%</div>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`;
+}
+
+function selectSource(sp) {
+  if (!sp) return;
+  document.querySelectorAll('.src-card').forEach(c => c.classList.remove('src-card-active'));
+  const card = document.getElementById(`srcc-${sp.id}`);
+  if (card) card.classList.add('src-card-active');
+  renderDetail(sp);
+}
+
+/* ── DETAIL VIEW ─────────────────────────────────── */
+function renderDetail(sp) {
+  const bd  = breakdown(sp.cost_eur);
+  const cc  = confColor(sp.confidence);
+  const sat = sp.satellite ?? {};
+
+  const R = 52, CX = 70, CY = 70;
+  const circ = 2 * Math.PI * R;
+  const dash = (sp.confidence / 100) * circ;
+  const feasLabel = sp.confidence >= 90 ? 'Excellent' : sp.confidence >= 80 ? 'High' : sp.confidence >= 70 ? 'Moderate' : 'Low';
+
+  const distKm = collectionPoint
+    ? haversineKm(collectionPoint.lat, collectionPoint.lon, sp.lat, sp.lon).toFixed(1)
+    : sp.distance_km;
+  const elevStr  = sp.elevation_m != null ? `${sp.elevation_m} m` : '—';
+  const slopeStr = sat.dem_slope_deg != null ? `${sat.dem_slope_deg}° slope` : '';
+  const col = TYPE_COLOR[sp.type] ?? '#2563eb';
+
+  document.getElementById('detail-panel').innerHTML = `
+    <div class="dp-header">
+      <div>
+        <div class="dp-title" style="display:flex;align-items:center;gap:7px">
+          <span class="src-icon-sm" style="background:${col}20;color:${col}">${TYPE_ICON[sp.type] ?? TYPE_ICON.spring}</span>
+          ${sp.name}
+        </div>
+        <div class="dp-sub">${sp.nearest_village} &middot; ${sp.type.charAt(0).toUpperCase() + sp.type.slice(1)}</div>
+      </div>
+      <button class="dp-back-btn" onclick="enterSourcesVisible(collectionPoint.lat,collectionPoint.lon)">&#8592; List</button>
+    </div>
+
+    <div class="dp-feas-wrap">
+      <svg class="dp-feas-svg" viewBox="0 0 140 140">
+        <circle cx="${CX}" cy="${CY}" r="${R}" fill="none" stroke="var(--border)" stroke-width="11"/>
+        <circle cx="${CX}" cy="${CY}" r="${R}" fill="none" stroke="${cc}" stroke-width="11"
+          stroke-dasharray="${dash.toFixed(2)} ${(circ - dash).toFixed(2)}" stroke-linecap="round"
+          transform="rotate(-90 ${CX} ${CY})"/>
+        <text x="${CX}" y="${CY - 7}" text-anchor="middle" fill="${cc}" font-size="26" font-weight="800" font-family="Outfit,sans-serif">${sp.confidence}%</text>
+        <text x="${CX}" y="${CY + 13}" text-anchor="middle" fill="#94a3b8" font-size="11" font-family="Outfit,sans-serif">${feasLabel}</text>
+      </svg>
+      <div class="dp-feas-label">Feasibility Score</div>
+    </div>
+
+    <div class="dp-metric-grid">
+      <div class="dp-metric-card">
+        <div class="dp-metric-icon" style="background:rgba(37,99,235,.1)">
+          <svg viewBox="0 0 24 24" fill="#2563eb"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/></svg>
+        </div>
+        <div class="dp-metric-val">${distKm} <span>km</span></div>
+        <div class="dp-metric-lbl">Distance from point</div>
+      </div>
+      <div class="dp-metric-card">
+        <div class="dp-metric-icon" style="background:rgba(5,150,105,.1)">
+          <svg viewBox="0 0 24 24" fill="#059669"><path d="M3 17h4v4H3zm7-4h4v8h-4zm7-6h4v14h-4z"/></svg>
+        </div>
+        <div class="dp-metric-val">${elevStr}</div>
+        <div class="dp-metric-lbl">Elevation${slopeStr ? ' · ' + slopeStr : ''}</div>
+      </div>
+      <div class="dp-metric-card">
+        <div class="dp-metric-icon" style="background:rgba(0,212,170,.1)">
+          <svg viewBox="0 0 24 24" fill="#00d4aa"><path d="M12 2c-5.33 4.55-8 8.48-8 11.8 0 4.98 3.8 8.2 8 8.2s8-3.22 8-8.2C20 10.48 17.33 6.55 12 2z"/></svg>
+        </div>
+        <div class="dp-metric-val">${sp.reserve} <span>m³/d</span></div>
+        <div class="dp-metric-lbl">Water Output</div>
+      </div>
     </div>
 
     <div class="dp-section">
-      <div class="dp-section-label">Water Reserve Capacity</div>
-      <div class="gauge-box">
-        <div class="gauge-top"><span class="gauge-val">${sp.reserve} m³/day</span><span class="gauge-cap">Max: ${MAX_RESERVE} m³/day</span></div>
-        <div class="gauge-track"><div class="gauge-fill" style="width:${pct}%"></div></div>
-        <div class="gauge-hint">${pct}% of regional threshold</div>
-      </div>
-    </div>
-
-    <div class="dp-section">
-      <div class="dp-section-label">Detection Confidence</div>
-      <div class="conf-row">
-        <span class="conf-num" style="color:${cc}">${sp.confidence}%</span>
-        <div class="conf-track"><div class="conf-fill" style="width:${sp.confidence}%;background:${cc}"></div></div>
-      </div>
-    </div>
-
-    <div class="dp-section">
-      <div class="dp-section-label">Satellite Telemetry</div>
-      <div class="sat-grid">
-        <div class="sat-cell">
-          <div class="sat-lbl">SAR Anomaly (S-1)</div>
-          <div class="sat-val" style="color:${sarColor}">${sarPct}%</div>
-          <div class="gauge-track" style="margin-top:5px"><div class="gauge-fill" style="width:${sarPct}%;background:${sarColor}"></div></div>
-        </div>
-        <div class="sat-cell">
-          <div class="sat-lbl">NDWI Index (S-2)</div>
-          <div class="sat-val" style="color:#2563eb">${sat.sentinel2_ndwi != null ? sat.sentinel2_ndwi.toFixed(2) : '—'}</div>
-          <div class="gauge-track" style="margin-top:5px"><div class="gauge-fill" style="width:${ndwiPct}%;background:#2563eb"></div></div>
-        </div>
-        <div class="sat-cell">
-          <div class="sat-lbl">DEM Slope</div>
-          <div class="sat-val">${sat.dem_slope_deg != null ? sat.dem_slope_deg + '°' : '—'}</div>
-        </div>
-        <div class="sat-cell">
-          <div class="sat-lbl">Orbit</div>
-          <div class="sat-val" style="text-transform:capitalize">${sat.orbit_direction ?? '—'}</div>
-        </div>
-        <div class="sat-cell sat-cell-full">
-          <div class="sat-lbl">Last Pass</div>
-          <div class="sat-pass">${sat.last_pass_utc ? fmtPassDate(sat.last_pass_utc) : '—'}</div>
-        </div>
-      </div>
-    </div>
-
-    ${sp.elevation_m != null ? `
-    <div class="dp-section">
-      <div class="dp-section-label">Geology &amp; Site</div>
-      <div class="coord-grid">
-        <div class="coord-item"><div class="coord-lbl">Elevation</div><div class="coord-val">${sp.elevation_m} m</div></div>
-        <div class="coord-item"><div class="coord-lbl">Aquifer Depth</div><div class="coord-val">${sp.aquifer_depth_m} m</div></div>
-        <div class="coord-item"><div class="coord-lbl">Drainage Basin</div><div class="coord-val">${sp.drainage_basin}</div></div>
-        <div class="coord-item"><div class="coord-lbl">Catchment</div><div class="coord-val">${sp.catchment_area_km2} km²</div></div>
-      </div>
-      ${sp.geology_type ? `<div class="geology-badge">${GEOLOGY_LABEL[sp.geology_type] ?? sp.geology_type}</div>` : ''}
-    </div>` : ''}
-
-    <div class="dp-section">
-      <div class="dp-section-label">Cost Breakdown</div>
+      <div class="dp-section-label">Cost Estimate</div>
       <table class="cost-tbl">
         <tr><td>Pipeline construction</td><td>${fmtCost(bd.pipeline)}</td></tr>
         <tr><td>Pumping station</td><td>${fmtCost(bd.pump)}</td></tr>
@@ -450,72 +497,41 @@ function renderDetail(sp) {
       <div class="eu-badge">&#10003; Eligible — POIM 2021–2027</div>
     </div>
 
-    <div class="coord-grid">
-      <div class="coord-item"><div class="coord-lbl">Latitude</div><div class="coord-val">${sp.lat.toFixed(4)}° N</div></div>
-      <div class="coord-item"><div class="coord-lbl">Longitude</div><div class="coord-val">${sp.lon.toFixed(4)}° E</div></div>
-    </div>
-
     <div class="btn-row">
-      <button class="btn btn-primary" onclick="generateReport('${sp.id}','${sp.name.replace(/'/g,"\\'")}')">
+      <button class="btn btn-primary" onclick="generateReport('${sp.id}','${sp.name.replace(/'/g, "\\'")}')">
         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
-        Generate Report
+        Report
       </button>
-      <button class="btn btn-secondary" onclick="runLiveAnalysis('${sp.id}','${sp.name.replace(/'/g,"\\'")}')">
-        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V5a2 2 0 00-2-2zm-7 14l-4-4 1.4-1.4L12 14.2l5.6-5.6L19 10z"/></svg>
-        Run Live Analysis
-      </button>
-      <button class="btn btn-secondary" onclick="flagReview('${sp.id}','${sp.name.replace(/'/g,"\\'")}')">
+      <button class="btn btn-secondary" onclick="flagReview('${sp.id}','${sp.name.replace(/'/g, "\\'")}')">
         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M14.4 6L14 4H5v17h2v-7h5.6l.4 2h7V6z"/></svg>
-        Flag Review
+        Flag
       </button>
-    </div>
-    <div id="live-analysis-${sp.id}" class="live-analysis"></div>
-  `;
+    </div>`;
 }
-
-/* ── ANALYSIS SECTION ────────────────────────────── */
-function renderAnalysis(springs, villages) {
-  const maxRes = Math.max(...springs.map(s => s.reserve));
-  const sorted = [...springs].sort((a, b) => b.reserve - a.reserve);
-
-  document.getElementById('reserve-chart').innerHTML = sorted.map(sp => {
-    const w = (sp.reserve / maxRes * 100).toFixed(1);
-    const c = STATUS_COLOR[sp.status];
-    return `
-      <div class="bar-row">
-        <div class="bar-label">${sp.name}<span class="bar-region"> ${sp.region}</span></div>
-        <div class="bar-track"><div class="bar-fill" style="width:${w}%;background:${c}"></div></div>
-        <div class="bar-val">${sp.reserve}</div>
-      </div>`;
-  }).join('');
-
-  const vProps = villages.map(f => f.properties);
-  document.getElementById('village-coverage').innerHTML = vProps.map(v => {
-    const col = ACCESS_COLOR[v.access_status] ?? '#b45309';
-    return `
-      <div class="vc-row">
-        <div class="vc-dot" style="background:${col}"></div>
-        <div class="vc-info">
-          <div class="vc-name">${v.village_name} <span class="vc-county">${v.county}</span></div>
-          <div class="vc-status" style="color:${col}">${v.access_status}</div>
-        </div>
-        <div class="vc-meta">
-          <div class="vc-pop">${v.population.toLocaleString()} res.</div>
-          <div class="vc-need">${v.water_need_m3_day} m³/day</div>
-        </div>
-        <div class="vc-link"><span class="sbadge sbadge-linked">${v.linked_spring_id}</span></div>
-      </div>`;
-  }).join('');
-}
-
-/* ── SELECT ──────────────────────────────────────── */
-function selectSpring(sp) { renderDetail(sp); highlightRow(sp.id); }
 
 /* ── TABLE ───────────────────────────────────────── */
+let _allSprings = [];
+
+function filterSprings(q) {
+  const s = q.toLowerCase().trim();
+  if (!s) return _allSprings;
+  return _allSprings.filter(sp =>
+    sp.name.toLowerCase().includes(s) || sp.region.toLowerCase().includes(s) ||
+    sp.id.toLowerCase().includes(s) || sp.nearest_village?.toLowerCase().includes(s));
+}
+
+function updateSearch(query) {
+  const filtered = filterSprings(query);
+  renderTable(filtered);
+  const status = document.getElementById('search-status');
+  status.innerHTML = (query.trim() && filtered.length < _allSprings.length)
+    ? `<span class="search-count">${filtered.length} of ${_allSprings.length} match</span>` : '';
+}
+
 function renderTable(springs) {
   const tbody = document.getElementById('springs-tbody');
   if (springs.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="9" class="no-results"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>No springs match your search</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="9" class="no-results">No springs match your search</td></tr>`;
     document.getElementById('table-count').textContent = '0 sources'; return;
   }
   tbody.innerHTML = springs.map(sp => `
@@ -536,203 +552,79 @@ function renderTable(springs) {
 function handleRowClick(id) {
   const sp = getSpringById(id);
   if (!sp) return;
-  selectSpring(sp);
+  document.querySelectorAll('.dtbl tbody tr').forEach(r => r.classList.remove('active-row'));
+  document.getElementById(`row-${id}`)?.classList.add('active-row');
   markerRefs[id]?.openPopup();
   leafletMap.setView([sp.lat, sp.lon], 11, { animate: true });
 }
 function viewSpring(id) { handleRowClick(id); }
 
-function highlightRow(id) {
-  document.querySelectorAll('.dtbl tbody tr').forEach(r => r.classList.remove('active-row'));
-  const row = document.getElementById(`row-${id}`);
-  if (row) { row.classList.add('active-row'); row.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
+/* ── ANALYSIS ────────────────────────────────────── */
+function renderAnalysis(springs, villages) {
+  const maxRes = Math.max(...springs.map(s => s.reserve));
+  const sorted = [...springs].sort((a, b) => b.reserve - a.reserve);
+
+  document.getElementById('reserve-chart').innerHTML = sorted.map(sp => {
+    const w = (sp.reserve / maxRes * 100).toFixed(1);
+    const c = STATUS_COLOR[sp.status];
+    return `<div class="bar-row">
+      <div class="bar-label">${sp.name}<span class="bar-region"> ${sp.region}</span></div>
+      <div class="bar-track"><div class="bar-fill" style="width:${w}%;background:${c}"></div></div>
+      <div class="bar-val">${sp.reserve}</div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('village-coverage').innerHTML = villages.map(v => {
+    const col = v.access_status === 'No piped water' ? '#dc2626'
+              : v.access_status === 'Seasonal shortages' ? '#b45309' : '#d97706';
+    return `<div class="vc-row">
+      <div class="vc-dot" style="background:${col}"></div>
+      <div class="vc-info">
+        <div class="vc-name">${v.name} <span class="vc-county">${v.county}</span></div>
+        <div class="vc-status" style="color:${col}">${v.access_status}</div>
+      </div>
+      <div class="vc-meta">
+        <div class="vc-pop">${v.population.toLocaleString()} res.</div>
+        <div class="vc-need">${v.water_need_m3_day} m³/day</div>
+      </div>
+    </div>`;
+  }).join('');
 }
 
 /* ── ACTIONS ─────────────────────────────────────── */
 async function generateReport(id, name) {
   if (!(await H2O.checkBackend())) {
-    alert(
-      `PDF report generation needs the backend service.\n\n` +
-      `Start it with:\n  py -m backend.server\n\n` +
-      `(then refresh this page)`
-    );
+    alert(`PDF report generation needs the backend service.\n\nStart it with:\n  py -m backend.server`);
     return;
   }
-  setBackendStatus('working', 'Generating PDF…');
   try {
-    await H2O.downloadReport(id, `H2Oolkit_${id}_${name.replace(/[^a-z0-9_-]/gi,'')}.pdf`);
-    setBackendStatus('online', 'PDF downloaded');
+    await H2O.downloadReport(id, `H2Oolkit_${id}_${name.replace(/[^a-z0-9_-]/gi, '')}.pdf`);
   } catch (err) {
-    console.error(err);
-    setBackendStatus('error', 'PDF generation failed');
     alert(`PDF generation failed: ${err.message}`);
   }
 }
 
 function flagReview(id, name) {
-  alert(`${name} (${id}) flagged for review.\nThe field team will be notified within 24 hours.`);
-}
-
-async function runLiveAnalysis(id, name) {
-  const target = document.getElementById(`live-analysis-${id}`);
-  if (!target) return;
-
-  if (!(await H2O.checkBackend())) {
-    target.innerHTML = `
-      <div class="dp-section live-analysis-warn">
-        <div class="dp-section-label">Live Analysis</div>
-        <p>Backend service offline. Start it with <code>py -m backend.server</code> then retry.</p>
-      </div>`;
-    return;
-  }
-
-  target.innerHTML = `
-    <div class="dp-section">
-      <div class="dp-section-label">Live Analysis — ${name}</div>
-      <p class="live-loading">Querying Open-Meteo, OSM &amp; SRTM…</p>
-    </div>`;
-  setBackendStatus('working', 'Running live analysis…');
-
-  try {
-    const result = await H2O.analyzeSpring(id);
-    target.innerHTML = renderLiveAnalysis(result);
-    setBackendStatus('online', 'Live analysis complete');
-  } catch (err) {
-    console.error(err);
-    target.innerHTML = `
-      <div class="dp-section live-analysis-warn">
-        <div class="dp-section-label">Live Analysis</div>
-        <p>Failed: ${err.message}</p>
-      </div>`;
-    setBackendStatus('error', 'Live analysis failed');
-  }
-}
-
-function renderLiveAnalysis(r) {
-  const sp   = r.spring_analysis ?? {};
-  const wr   = r.water_reserve ?? {};
-  const cost = r.cost ?? {};
-  const route = r.route ?? {};
-  const wx   = r.weather ?? {};
-
-  const prob = (sp.spring_probability ?? 0) * 100;
-  const probColor = prob >= 65 ? '#059669' : prob >= 40 ? '#b45309' : '#dc2626';
-
-  const fmtEur = (n) => '€' + (n ?? 0).toLocaleString('de-DE');
-  const fmtL   = (n) => (n ?? 0).toLocaleString('en-US') + ' L/day';
-
-  const proj = wr.three_year_projection_m3 ?? {};
-
-  return `
-    <div class="dp-section live-analysis-result">
-      <div class="dp-section-label">Live Analysis Results</div>
-
-      <div class="sat-grid">
-        <div class="sat-cell">
-          <div class="sat-lbl">Spring Probability</div>
-          <div class="sat-val" style="color:${probColor}">${prob.toFixed(0)}%</div>
-        </div>
-        <div class="sat-cell">
-          <div class="sat-lbl">Daily Flow</div>
-          <div class="sat-val">${fmtL(wr.daily_flow_liters)}</div>
-        </div>
-        <div class="sat-cell">
-          <div class="sat-lbl">Total Cost</div>
-          <div class="sat-val">${fmtEur(cost.total_cost_eur)}</div>
-        </div>
-        <div class="sat-cell">
-          <div class="sat-lbl">PNRR Grant</div>
-          <div class="sat-val">${fmtEur(cost.pnrr_grant_eur)}</div>
-        </div>
-        <div class="sat-cell">
-          <div class="sat-lbl">Village Pays</div>
-          <div class="sat-val">${fmtEur(cost.village_contribution_eur)}</div>
-        </div>
-        <div class="sat-cell">
-          <div class="sat-lbl">Feasibility</div>
-          <div class="sat-val" style="text-transform:capitalize">${(cost.feasibility ?? '—').replace(/_/g,' ')}</div>
-        </div>
-      </div>
-
-      <div class="coord-grid" style="margin-top:10px">
-        <div class="coord-item"><div class="coord-lbl">Mean Annual Precip.</div>
-          <div class="coord-val">${(wx.mean_annual_precipitation_mm ?? 0).toFixed(0)} mm</div></div>
-        <div class="coord-item"><div class="coord-lbl">Recharge</div>
-          <div class="coord-val">${(wx.estimated_recharge_mm ?? 0).toFixed(0)} mm</div></div>
-        <div class="coord-item"><div class="coord-lbl">Trend</div>
-          <div class="coord-val">${(wx.trend_mm_per_year ?? 0).toFixed(1)} mm/yr</div></div>
-        <div class="coord-item"><div class="coord-lbl">Pipeline Length</div>
-          <div class="coord-val">${(route.terrain_adjusted_distance_km ?? 0).toFixed(2)} km</div></div>
-        <div class="coord-item"><div class="coord-lbl">Feed Type</div>
-          <div class="coord-val" style="text-transform:capitalize">${route.feed_type ?? '—'}</div></div>
-        <div class="coord-item"><div class="coord-lbl">Pipe Diameter</div>
-          <div class="coord-val">${route.pipe_diameter_mm ?? '—'} mm</div></div>
-      </div>
-
-      <div class="coord-grid" style="margin-top:10px">
-        <div class="coord-item"><div class="coord-lbl">Year 1 (m³)</div>
-          <div class="coord-val">${(proj.year_1 ?? 0).toLocaleString()}</div></div>
-        <div class="coord-item"><div class="coord-lbl">Year 2 (m³)</div>
-          <div class="coord-val">${(proj.year_2 ?? 0).toLocaleString()}</div></div>
-        <div class="coord-item"><div class="coord-lbl">Year 3 (m³)</div>
-          <div class="coord-val">${(proj.year_3 ?? 0).toLocaleString()}</div></div>
-      </div>
-
-      <p class="live-recommendation">${r.recommendation ?? ''}</p>
-      ${wx.fallback ? `<p class="live-note">Weather data fell back to regional defaults (Open-Meteo unreachable).</p>` : ''}
-    </div>`;
-}
-
-function setBackendStatus(state, text) {
-  const el = document.getElementById('backend-status');
-  if (!el) return;
-  el.dataset.state = state;
-  el.textContent = text;
-}
-
-/* ── MAP EXPAND TOGGLE ───────────────────────────── */
-function toggleMapExpand() {
-  const layout  = document.querySelector('.split-layout');
-  const icon    = document.getElementById('map-expand-icon');
-  const expanded = layout.classList.toggle('map-expanded');
-
-  icon.innerHTML = expanded
-    ? `<path d="M8 3v3a2 2 0 01-2 2H3m18 0h-3a2 2 0 01-2-2V3m0 18v-3a2 2 0 012-2h3M3 16h3a2 2 0 012 2v3"/>`
-    : `<path d="M8 3H5a2 2 0 00-2 2v3m18 0V5a2 2 0 00-2-2h-3m0 18h3a2 2 0 002-2v-3M3 16v3a2 2 0 002 2h3"/>`;
-
-  setTimeout(() => leafletMap.invalidateSize(), 360);
+  alert(`${name} (${id}) flagged for field team review.`);
 }
 
 /* ── INIT ────────────────────────────────────────── */
-async function probeBackend() {
-  setBackendStatus('checking', 'checking…');
-  const online = await H2O.checkBackend();
-  if (online) setBackendStatus('online',  'backend online');
-  else        setBackendStatus('offline', 'backend offline');
-}
-
 async function init() {
   initMap();
-  renderDetailPlaceholder();
-  probeBackend();
 
-  _allSprings = await loadSprings();
+  [_allVillages, _allSprings] = await Promise.all([loadVillages(), loadSprings()]);
 
-  if (_allSprings.length === 0) {
+  if (_allSprings.length === 0 || _allVillages.length === 0) {
     document.getElementById('detail-panel').innerHTML =
       `<p style="color:#dc2626;padding:16px;font-size:.82rem">Failed to load data. Serve via <code>npx serve .</code></p>`;
     return;
   }
 
-  const villages = getVillageZones();
-
-  addConnectionLines(_allSprings, villages);
-  addMarkers(_allSprings);
-  addVillageZones(villages);
+  addVillageMarkers(_allVillages);
+  addSourceMarkers(_allSprings);
+  renderVillageSelectPanel();
   renderTable(_allSprings);
-  renderAnalysis(_allSprings, villages);
-  selectSpring(_allSprings[0]);
-  highlightRow(_allSprings[0].id);
+  renderAnalysis(_allSprings, _allVillages);
   initLocationSearch();
 
   const input = document.getElementById('search-input');

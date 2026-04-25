@@ -1,13 +1,5 @@
-/**
- * data-bridge.js
- * Loads springs.json + springs.geojson, merges by id.
- * Separates village_zone polygon features from spring point features.
- *
- * NOTE: fetch() requires HTTP. Run: npx serve . OR python -m http.server 8000
- */
-
-let _springs      = [];
-let _villageZones = [];
+let _springs = [];
+let _villages = [];
 
 async function loadSprings() {
   try {
@@ -15,43 +7,40 @@ async function loadSprings() {
       fetch('data/springs.json'),
       fetch('data/springs.geojson')
     ]);
-
     if (!attrRes.ok) throw new Error(`springs.json: HTTP ${attrRes.status}`);
     if (!geoRes.ok)  throw new Error(`springs.geojson: HTTP ${geoRes.status}`);
 
     const attributes = await attrRes.json();
     const geojson    = await geoRes.json();
 
-    const springFeatures = geojson.features.filter(f => f.properties.feature_type !== 'village_zone');
-    _villageZones        = geojson.features.filter(f => f.properties.feature_type === 'village_zone');
-
     const geoIndex = {};
-    for (const feature of springFeatures) {
-      geoIndex[feature.properties.id] = {
-        lat: feature.geometry.coordinates[1],
-        lon: feature.geometry.coordinates[0],
-        ...feature.properties
+    for (const f of geojson.features) {
+      geoIndex[f.properties.id] = {
+        lat: f.geometry.coordinates[1],
+        lon: f.geometry.coordinates[0],
+        ...f.properties
       };
     }
 
-    _springs = attributes.map(attr => {
-      const geo = geoIndex[attr.id] ?? {};
-      return { ...attr, ...geo };
-    });
-
+    _springs = attributes.map(attr => ({ ...attr, ...(geoIndex[attr.id] ?? {}) }));
     return _springs;
-
   } catch (err) {
-    console.warn('[data-bridge] Failed to load data files:', err.message);
-    console.warn('[data-bridge] Serve via HTTP: npx serve .');
+    console.warn('[data-bridge] loadSprings failed:', err.message);
     return [];
   }
 }
 
-function getSpringById(id) {
-  return _springs.find(s => s.id === id) ?? null;
+async function loadVillages() {
+  try {
+    const res = await fetch('data/villages.json');
+    if (!res.ok) throw new Error(`villages.json: HTTP ${res.status}`);
+    _villages = await res.json();
+    return _villages;
+  } catch (err) {
+    console.warn('[data-bridge] loadVillages failed:', err.message);
+    return [];
+  }
 }
 
-function getVillageZones() {
-  return _villageZones;
-}
+function getSpringById(id) { return _springs.find(s => s.id === id) ?? null; }
+function getVillages()     { return _villages; }
