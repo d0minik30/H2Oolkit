@@ -858,3 +858,52 @@ html.dark { --bg:#0f172a; --card:#1e293b; --border:#334155; --border-2:#475569; 
 @media (max-width: 800px) {
   .below-map-grid { grid-template-columns: 1fr; }
 }
+
+/* ── VILLAGE DETAIL PANEL ────────────────────────── */
+.vp-status-banner {
+  display: flex; align-items: center; gap: 8px;
+  border: 1px solid; border-radius: 8px; padding: 8px 12px;
+  margin-bottom: 14px;
+}
+.vp-status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.vp-status-text { font-size: .75rem; font-weight: 700; }
+
+.vp-stat-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 14px;
+}
+.vp-stat {
+  background: var(--bg); border: 1px solid var(--border); border-radius: 9px;
+  padding: 10px 8px; display: flex; flex-direction: column; align-items: center;
+  text-align: center; gap: 4px;
+}
+.vp-stat-icon {
+  width: 30px; height: 30px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center; margin-bottom: 2px;
+}
+.vp-stat-icon svg { width: 14px; height: 14px; }
+.vp-stat-val { font-size: .95rem; font-weight: 800; color: var(--text); letter-spacing: -.02em; line-height: 1.1; }
+.vp-stat-lbl { font-size: .58rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
+
+.vp-coverage { margin-bottom: 14px; }
+.vp-coverage-header {
+  display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;
+}
+.vp-coverage-lbl { font-size: .68rem; font-weight: 600; color: var(--text-muted); }
+.vp-coverage-pct { font-size: .82rem; font-weight: 800; }
+.vp-coverage-track {
+  height: 7px; background: var(--border); border-radius: 4px; overflow: hidden; margin-bottom: 5px;
+}
+.vp-coverage-fill { height: 100%; border-radius: 4px; transition: width .5s ease; }
+.vp-coverage-sub { font-size: .62rem; color: var(--text-muted); font-weight: 500; }
+
+.vp-sources-row {
+  display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap;
+}
+.vp-src-badge {
+  flex: 1; min-width: 60px;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+  padding: 8px 10px; text-align: center;
+}
+.vp-src-badge-wide { flex: 2; }
+.vp-src-badge-val { font-size: .88rem; font-weight: 800; color: var(--text); letter-spacing: -.02em; }
+.vp-src-badge-lbl { font-size: .58rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; margin-top: 1px; }

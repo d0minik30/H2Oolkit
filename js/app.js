@@ -345,27 +345,85 @@ function renderVillageSelectPanel() {
 }
 
 function renderPointSelectPanel(village) {
+  const linked      = _allSprings.filter(s => s.linked_village_id === village.id);
+  const totalCap    = linked.reduce((s, sp) => s + sp.reserve, 0);
+  const perCap      = Math.round(village.water_need_m3_day * 1000 / village.population);
+  const coverage    = Math.min(100, Math.round(totalCap / village.water_need_m3_day * 100));
+  const covColor    = coverage >= 100 ? '#059669' : coverage >= 60 ? '#b45309' : '#dc2626';
+  const best        = linked.length ? linked.reduce((a, b) => b.reserve > a.reserve ? b : a) : null;
+  const avgConf     = linked.length ? Math.round(linked.reduce((s, sp) => s + sp.confidence, 0) / linked.length) : 0;
+  const accessColor = village.access_status === 'No piped water' ? '#dc2626'
+                    : village.access_status === 'Seasonal shortages' ? '#b45309' : '#d97706';
+
   document.getElementById('detail-panel').innerHTML = `
     <div class="dp-header">
       <div>
         <div class="dp-title">${village.name}</div>
-        <div class="dp-sub">${village.county} County &middot; ${village.population.toLocaleString()} residents</div>
+        <div class="dp-sub">${village.county} County</div>
       </div>
       <button class="dp-back-btn" onclick="enterVillageSelect()">&#8592; Back</button>
     </div>
+
+    <div class="vp-status-banner" style="border-color:${accessColor}40;background:${accessColor}0d">
+      <div class="vp-status-dot" style="background:${accessColor}"></div>
+      <div class="vp-status-text" style="color:${accessColor}">${village.access_status}</div>
+    </div>
+
+    <div class="vp-stat-grid">
+      <div class="vp-stat">
+        <div class="vp-stat-icon" style="background:rgba(37,99,235,.1)">
+          <svg viewBox="0 0 24 24" fill="#2563eb"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>
+        </div>
+        <div class="vp-stat-val">${village.population.toLocaleString()}</div>
+        <div class="vp-stat-lbl">Est. Population</div>
+      </div>
+      <div class="vp-stat">
+        <div class="vp-stat-icon" style="background:rgba(0,212,170,.1)">
+          <svg viewBox="0 0 24 24" fill="#00d4aa"><path d="M12 2c-5.33 4.55-8 8.48-8 11.8 0 4.98 3.8 8.2 8 8.2s8-3.22 8-8.2C20 10.48 17.33 6.55 12 2z"/></svg>
+        </div>
+        <div class="vp-stat-val">${village.water_need_m3_day}</div>
+        <div class="vp-stat-lbl">m³/day needed</div>
+      </div>
+      <div class="vp-stat">
+        <div class="vp-stat-icon" style="background:rgba(8,145,178,.1)">
+          <svg viewBox="0 0 24 24" fill="#0891b2"><path d="M20 9V7c0-1.1-.9-2-2-2h-3V3H9v2H6c-1.1 0-2 .9-2 2v2c-1.31 0-2 1.07-2 2v4h1.33L5 19h14l1.67-4H22v-4c0-.93-.69-2-2-2zm-2 0H6V7h12v2z"/></svg>
+        </div>
+        <div class="vp-stat-val">${perCap}</div>
+        <div class="vp-stat-lbl">L/person/day</div>
+      </div>
+    </div>
+
+    <div class="vp-coverage">
+      <div class="vp-coverage-header">
+        <span class="vp-coverage-lbl">Source capacity vs. daily need</span>
+        <span class="vp-coverage-pct" style="color:${covColor}">${coverage}%</span>
+      </div>
+      <div class="vp-coverage-track">
+        <div class="vp-coverage-fill" style="width:${coverage}%;background:${covColor}"></div>
+      </div>
+      <div class="vp-coverage-sub">${totalCap.toLocaleString()} m³/day available &middot; ${village.water_need_m3_day} m³/day required</div>
+    </div>
+
+    <div class="vp-sources-row">
+      <div class="vp-src-badge">
+        <div class="vp-src-badge-val">${linked.length}</div>
+        <div class="vp-src-badge-lbl">nearby sources</div>
+      </div>
+      <div class="vp-src-badge">
+        <div class="vp-src-badge-val">${avgConf}%</div>
+        <div class="vp-src-badge-lbl">avg. confidence</div>
+      </div>
+      ${best ? `<div class="vp-src-badge vp-src-badge-wide">
+        <div class="vp-src-badge-val">${best.reserve} m³/d</div>
+        <div class="vp-src-badge-lbl">best · ${best.name}</div>
+      </div>` : ''}
+    </div>
+
     <div class="dp-instruction-box">
       <svg viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5S10.62 6.5 12 6.5s2.5 1.12 2.5 2.5S13.38 11.5 12 11.5z"/></svg>
       <div>
         <div class="dp-instr-title">Set Collection Point</div>
-        <div class="dp-instr-text">Click anywhere on the map to set your desired water collection point. All sources within 10 km will appear.</div>
-      </div>
-    </div>
-    <div class="dp-section">
-      <div class="dp-section-label">Village Profile</div>
-      <div class="sat-grid">
-        <div class="sat-cell"><div class="sat-lbl">Population</div><div class="sat-val">${village.population.toLocaleString()}</div></div>
-        <div class="sat-cell"><div class="sat-lbl">Daily Need</div><div class="sat-val">${village.water_need_m3_day} m³</div></div>
-        <div class="sat-cell sat-cell-full"><div class="sat-lbl">Water Access</div><div class="sat-val" style="color:#dc2626">${village.access_status}</div></div>
+        <div class="dp-instr-text">Click anywhere on the map to place your collection point. Sources within 10 km will appear.</div>
       </div>
     </div>`;
 }
@@ -647,18 +705,14 @@ function renderOverviewStats(springs, villages) {
   const confColor2 = avgConf >= 90 ? '#059669' : avgConf >= 80 ? '#2563eb' : '#b45309';
 
   document.getElementById('overview-stats').innerHTML = `
-    <div class="ov-hero">
-      <div class="ov-hero-circle">
-        <div class="ov-hero-val">${total}</div>
-        <div class="ov-hero-lbl">sources</div>
-      </div>
-      <div class="ov-hero-side">
-        <div class="ov-hero-tag">
-          <svg viewBox="0 0 24 24" fill="#059669"><path d="M12 2c-5.33 4.55-8 8.48-8 11.8 0 4.98 3.8 8.2 8 8.2s8-3.22 8-8.2C20 10.48 17.33 6.55 12 2z"/></svg>
-          Satellite-detected water sources
-        </div>
-        <div class="ov-hero-cap">${totalRes.toLocaleString()} <span>m³/day total capacity</span></div>
-        <div class="ov-hero-villages">${villages.length} villages &middot; ${Object.keys(typeCount).length} source types</div>
+    <div class="ov-best-card">
+      <div class="ov-best-eyebrow">Highest Output Source</div>
+      <div class="ov-best-name">${best.name}</div>
+      <div class="ov-best-details">
+        <span>${best.reserve} m³/day</span>
+        <span>${best.nearest_village}</span>
+        <span>${best.confidence}% confidence</span>
+        <span>${best.elevation_m} m elevation</span>
       </div>
     </div>
 
@@ -722,17 +776,6 @@ function renderOverviewStats(springs, villages) {
           ${count} ${type}${count > 1 ? 's' : ''}
         </div>`;
       }).join('')}
-    </div>
-
-    <div class="ov-best-card">
-      <div class="ov-best-eyebrow">Highest Output Source</div>
-      <div class="ov-best-name">${best.name}</div>
-      <div class="ov-best-details">
-        <span>${best.reserve} m³/day</span>
-        <span>${best.nearest_village}</span>
-        <span>${best.confidence}% confidence</span>
-        <span>${best.elevation_m} m elevation</span>
-      </div>
     </div>`;
 }
 
