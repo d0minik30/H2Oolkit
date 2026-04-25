@@ -17,7 +17,7 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="css/styles.css" />
 </head>
-<body>
+<body class="landing">
 
 <!-- NAVBAR -->
 <nav class="navbar">
@@ -43,7 +43,7 @@
   </div>
 
   <!-- HERO: 16:9 MAP + DETAIL PANEL -->
-  <div class="split-layout">
+  <div class="split-layout" id="split-layout">
 
     <!-- MAP CARD -->
     <div class="map-card">
@@ -65,13 +65,20 @@
       <!-- Location search overlaid on top of the map -->
       <div class="map-body">
         <div id="map"></div>
+        <div id="map-instruction"></div>
         <div class="map-overlay-search" id="map-overlay-search">
-          <svg class="mos-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
-          </svg>
-          <input type="text" id="location-search" class="mos-input"
-            placeholder="Search a location in Romania…"
-            autocomplete="off" spellcheck="false" />
+          <div class="mos-hero" id="mos-hero">
+            <div class="mos-hero-title">Spring Source Detection</div>
+            <div class="mos-hero-sub">Carpathian Arc &middot; Romania &mdash; search for a village or city to explore nearby water sources</div>
+          </div>
+          <div class="mos-input-wrap">
+            <svg class="mos-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+            </svg>
+            <input type="text" id="location-search" class="mos-input"
+              placeholder="Search a location in Romania…"
+              autocomplete="off" spellcheck="false" />
+          </div>
           <div id="location-results" class="mos-results" style="display:none"></div>
         </div>
       </div>

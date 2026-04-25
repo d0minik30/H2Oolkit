@@ -95,7 +95,8 @@ body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--bg); colo
   grid-template-columns: 62fr 38fr;
   gap: 12px; margin-bottom: 12px;
   height: 600px;
-  transition: height .35s cubic-bezier(.4,0,.2,1);
+  transition: grid-template-columns .45s cubic-bezier(.4,0,.2,1),
+              height .35s cubic-bezier(.4,0,.2,1);
 }
 .split-layout.map-expanded {
   grid-template-columns: 1fr;
@@ -119,41 +120,10 @@ body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--bg); colo
 .map-body { position: relative; flex: 1; }
 #map { width: 100%; height: 100%; }
 
-/* ── LOCATION SEARCH (map overlay) ──────────────── */
-.map-overlay-search {
-  position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
-  z-index: 1500; width: 300px;
-}
-.mos-input {
-  width: 100%; height: 38px;
-  padding: 0 36px 0 36px;
-  border: 1.5px solid rgba(255,255,255,.9);
-  border-radius: 9px;
-  background: rgba(255,255,255,.96);
-  color: var(--text);
-  font-family: 'Plus Jakarta Sans', sans-serif;
-  font-size: .8rem; font-weight: 500; outline: none;
-  box-shadow: var(--sh-md);
-  transition: border-color .15s, box-shadow .15s;
-}
-.mos-input::placeholder { color: var(--text-muted); }
-.mos-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(37,99,235,.15), var(--sh-md); }
-.mos-icon { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); width: 14px; height: 14px; color: var(--text-muted); pointer-events: none; }
-.mos-results {
-  margin-top: 4px; background: #fff; border: 1px solid var(--border);
-  border-radius: 9px; overflow: hidden; box-shadow: var(--sh-lg);
-  max-height: 220px; overflow-y: auto;
-}
-.mos-item { display: flex; align-items: center; gap: 9px; padding: 9px 12px; cursor: pointer; transition: background .12s; border-bottom: 1px solid var(--border); }
-.mos-item:last-child { border-bottom: none; }
-.mos-item:hover { background: var(--bg); }
-.mos-pin { width: 13px; height: 13px; fill: var(--red); flex-shrink: 0; }
-.mos-name { font-size: .8rem; font-weight: 600; color: var(--text); }
-.mos-region { font-size: .7rem; color: var(--text-muted); }
-.mos-no-result { padding: 12px; font-size: .78rem; color: var(--text-muted); text-align: center; }
+/* ── LOCATION SEARCH (map overlay) — see full def below ── */
 
 /* ── DETAIL PANEL ────────────────────────────────── */
-.detail-panel { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); overflow-y: auto; padding: 18px; box-shadow: var(--sh-sm); }
+.detail-panel { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); overflow-y: auto; padding: 18px; box-shadow: var(--sh-sm); min-width: 0; transition: opacity .35s ease .15s; }
 .dp-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 16px; padding-bottom: 14px; border-bottom: 1px solid var(--border); }
 .dp-title { font-size: 1rem; font-weight: 800; color: var(--text); margin-bottom: 3px; }
 .dp-sub   { font-size: .72rem; color: var(--text-muted); font-weight: 500; }
@@ -465,8 +435,15 @@ table.dtbl { width: 100%; border-collapse: collapse; font-size: .79rem; }
 .live-note { margin-top:7px; font-size:.7rem; color:var(--text-muted); font-style:italic; }
 
 /* ── MAP OVERLAY SEARCH ──────────────────────────── */
-.map-overlay-search { position:absolute; top:10px; left:50%; transform:translateX(-50%); z-index:1500; width:300px; }
-.mos-input { width:100%; height:38px; padding:0 14px 0 36px; border:1.5px solid rgba(255,255,255,.9); border-radius:9px; background:rgba(255,255,255,.96); color:var(--text); font-family:inherit; font-size:.8rem; font-weight:500; outline:none; box-shadow:var(--sh-md); transition:border-color .15s,box-shadow .15s; }
+.map-overlay-search {
+  position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+  z-index: 1500; width: 300px;
+  transition: top .42s cubic-bezier(.4,0,.2,1),
+              width .42s cubic-bezier(.4,0,.2,1),
+              transform .42s cubic-bezier(.4,0,.2,1);
+}
+.mos-input-wrap { position: relative; }
+.mos-input { width:100%; height:38px; padding:0 14px 0 36px; border:1.5px solid rgba(255,255,255,.9); border-radius:9px; background:rgba(255,255,255,.96); color:var(--text); font-family:inherit; font-size:.8rem; font-weight:500; outline:none; box-shadow:var(--sh-md); transition:border-color .15s,box-shadow .15s,height .3s; }
 .mos-input::placeholder { color:var(--text-muted); }
 .mos-input:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(37,99,235,.15),var(--sh-md); }
 .mos-icon { position:absolute; left:11px; top:50%; transform:translateY(-50%); width:14px; height:14px; color:var(--text-muted); pointer-events:none; }
@@ -478,6 +455,10 @@ table.dtbl { width: 100%; border-collapse: collapse; font-size: .79rem; }
 .mos-name { font-size:.8rem; font-weight:600; color:var(--text); }
 .mos-region { font-size:.7rem; color:var(--text-muted); margin-top:1px; }
 .mos-no-result { padding:12px 14px; font-size:.8rem; color:var(--text-muted); text-align:center; }
+.mos-hero { text-align: center; margin-bottom: 20px; }
+.mos-hero-title { font-size: 1.65rem; font-weight: 800; color: #fff; margin-bottom: 8px; text-shadow: 0 2px 14px rgba(0,0,0,.55); letter-spacing: -.03em; line-height: 1.2; }
+.mos-hero-sub { font-size: .8rem; color: rgba(255,255,255,.85); text-shadow: 0 1px 6px rgba(0,0,0,.45); line-height: 1.5; }
+body:not(.landing) .mos-hero { display: none; }
 
 /* ── DARK MODE ───────────────────────────────────── */
 .dark-toggle { width:32px; height:32px; background:var(--bg); border:1px solid var(--border); border-radius:7px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all .15s; }
@@ -499,12 +480,13 @@ html.dark { --bg:#0f172a; --card:#1e293b; --border:#334155; --border-2:#475569; 
 
 /* ── SOURCE MARKER ───────────────────────────────── */
 .src-marker {
-  width: 22px; height: 22px;
-  border: 2.5px solid #fff; border-radius: 50%;
-  display: flex; align-items: center; justify-content: center;
-  box-shadow: 0 0 0 2px rgba(0,0,0,.2), 0 2px 8px rgba(0,0,0,.4);
+  width: 14px; height: 14px;
+  border: 2px solid rgba(255,255,255,.85); border-radius: 50%;
+  box-shadow: 0 0 0 1.5px rgba(0,0,0,.25), 0 2px 6px rgba(0,0,0,.35);
   cursor: pointer;
+  transition: transform .15s;
 }
+.src-marker:hover { transform: scale(1.35); }
 
 /* ── COLLECTION POINT MARKER ─────────────────────── */
 .cp-marker {
@@ -515,6 +497,19 @@ html.dark { --bg:#0f172a; --card:#1e293b; --border:#334155; --border-2:#475569; 
   box-shadow: 0 2px 12px rgba(220,38,38,.5);
 }
 .cp-marker svg { width: 14px; height: 14px; fill: #fff; transform: rotate(45deg); }
+
+.cp-pin {
+  width: 20px; height: 20px;
+  background: #fff;
+  border: 3px solid #1d4ed8;
+  border-radius: 50%;
+  box-shadow: 0 0 0 4px rgba(37,99,235,.25), 0 2px 10px rgba(0,0,0,.4);
+  animation: cp-pulse 2.2s ease-in-out infinite;
+}
+@keyframes cp-pulse {
+  0%, 100% { box-shadow: 0 0 0 4px rgba(37,99,235,.25), 0 2px 10px rgba(0,0,0,.4); }
+  50%       { box-shadow: 0 0 0 8px rgba(37,99,235,.08), 0 2px 10px rgba(0,0,0,.4); }
+}
 
 /* ── MAP INSTRUCTION BANNER ──────────────────────── */
 #map-instruction {
@@ -946,3 +941,40 @@ html.dark { --bg:#0f172a; --card:#1e293b; --border:#334155; --border-2:#475569; 
 .pipe-total-val span {
   font-size: .68rem; font-weight: 600; color: var(--text-muted); margin-left: 4px;
 }
+
+/* ── BROWSE PANEL ────────────────────────────────── */
+.dp-welcome-or {
+  font-size: .68rem; font-weight: 600; color: var(--text-muted);
+  text-align: center; margin: 4px 0 8px; letter-spacing: .04em;
+}
+
+/* ── LANDING STATE ───────────────────────────────── */
+body.landing .page-header { display: none; }
+
+body.landing .split-layout {
+  grid-template-columns: 1fr 0fr;
+  height: calc(100vh - 56px);
+  margin-bottom: 0;
+}
+
+body.landing .map-header { display: none; }
+
+body.landing .map-body { overflow: hidden; }
+
+#map {
+  transition: filter .55s ease, transform .55s ease;
+}
+body.landing #map {
+  filter: blur(6px) brightness(0.62);
+  transform: scale(1.09);
+}
+
+body.landing .map-overlay-search {
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(520px, 88%);
+}
+body.landing .mos-input { height: 48px; font-size: .88rem; }
+
+body.landing .detail-panel { overflow: hidden; opacity: 0; padding: 0; }
+body:not(.landing) .detail-panel { opacity: 1; }

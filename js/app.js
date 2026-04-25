@@ -26,6 +26,13 @@ function confColor(c) {
   if (c >= 70) return '#b45309';
   return '#dc2626';
 }
+function confScoreColor(c) {
+  if (c >= 85) return '#16a34a';
+  if (c >= 70) return '#65a30d';
+  if (c >= 55) return '#d97706';
+  if (c >= 40) return '#ea580c';
+  return '#dc2626';
+}
 function breakdown(total) {
   const pipeline = Math.round(total * 0.668), pump = Math.round(total * 0.197);
   return { pipeline, pump, treatment: total - pipeline - pump };
@@ -33,10 +40,16 @@ function breakdown(total) {
 function fmtPassDate(utc) { return new Date(utc).toISOString().replace('T', ' ').slice(0, 16) + ' UTC'; }
 
 /* ── STATE ───────────────────────────────────────── */
-let appState = 'village-select'; // 'village-select' | 'point-select' | 'sources-visible'
+let appState = 'browse'; // 'browse' | 'point-select' | 'sources-visible'
+
+function setMapInstruction(show, text = '') {
+  const el = document.getElementById('map-instruction');
+  if (!el) return;
+  el.textContent = text;
+  el.style.display = show ? 'block' : 'none';
+}
 let selectedVillage = null;
 let collectionPoint = null;
-let collectionMarker = null;
 let _allVillages = [];
 
 /* ── MAP ─────────────────────────────────────────── */
@@ -46,6 +59,7 @@ const villageMarkerRefs = {};
 let _villageHighlight = null;
 let _villageRadiusRing = null;
 let _pipelineLayer = null;
+let _collectionMarker = null;
 
 const ROMANIA_BOUNDS = L.latLngBounds([43.6, 20.2], [48.3, 30.0]);
 
@@ -74,28 +88,26 @@ function initMap() {
   legend.onAdd = () => {
     const d = L.DomUtil.create('div', 'map-legend');
     d.innerHTML = `
-      <div class="legend-title">Legend</div>
-      <div class="legend-item"><div class="legend-village-dot"></div>Village</div>
-      <div class="legend-item"><div class="legend-source" style="background:#2563eb"></div>Spring</div>
-      <div class="legend-item"><div class="legend-source" style="background:#0284c7"></div>Stream</div>
-      <div class="legend-item"><div class="legend-source" style="background:#0891b2"></div>Lake / Reservoir</div>`;
+      <div class="legend-title">Confidence Score</div>
+      <div class="legend-item"><div class="legend-source" style="background:#16a34a"></div>85 – 100%</div>
+      <div class="legend-item"><div class="legend-source" style="background:#65a30d"></div>70 – 84%</div>
+      <div class="legend-item"><div class="legend-source" style="background:#d97706"></div>55 – 69%</div>
+      <div class="legend-item"><div class="legend-source" style="background:#ea580c"></div>40 – 54%</div>
+      <div class="legend-item"><div class="legend-source" style="background:#dc2626"></div>Below 40%</div>`;
     return d;
   };
   legend.addTo(leafletMap);
+
+  leafletMap.on('click', e => {
+    if (appState !== 'point-select') return;
+    enterAreaFocused(e.latlng.lat, e.latlng.lng, 10, selectedVillage);
+    setMapInstruction(false);
+  });
 }
 
 /* ── VILLAGE MARKERS ─────────────────────────────── */
 function addVillageMarkers(villages) {
   villages.forEach(v => {
-    const icon = L.divIcon({
-      html: `<div class="vm-marker"><svg viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg></div>`,
-      className: '', iconSize: [34, 34], iconAnchor: [17, 17]
-    });
-    const m = L.marker([v.lat, v.lon], { icon, zIndexOffset: 500 }).addTo(leafletMap)
-      .bindTooltip(`<b>${v.name}</b><br>${v.county} — ${v.population.toLocaleString()} res.`, { sticky: true, className: 'line-tooltip' });
-    m.on('click', () => enterPointSelect(v));
-    villageMarkerRefs[v.id] = m;
-
     const latlngs = v.polygon.map(([lon, lat]) => [lat, lon]);
     L.polygon(latlngs, {
       color: '#f59e0b', weight: 1.8, dashArray: '5 4',
@@ -104,13 +116,20 @@ function addVillageMarkers(villages) {
   });
 }
 
+/* ── LANDING MODE ────────────────────────────────── */
+function exitLandingMode() {
+  if (!document.body.classList.contains('landing')) return;
+  document.body.classList.remove('landing');
+  leafletMap.invalidateSize();
+}
+
 /* ── WATER SOURCE MARKERS ────────────────────────── */
 function addSourceMarkers(springs) {
   springs.forEach(sp => {
-    const col = TYPE_COLOR[sp.type] ?? '#2563eb';
+    const col = confScoreColor(sp.confidence);
     const icon = L.divIcon({
-      html: `<div class="src-marker" style="background:${col}"><svg viewBox="0 0 24 24" style="width:9px;height:9px;fill:#fff"><path d="M12 2c-1 2-5 6.5-5 9.5a5 5 0 0010 0C17 8.5 13 4 12 2z"/></svg></div>`,
-      className: '', iconSize: [22, 22], iconAnchor: [11, 11], popupAnchor: [0, -14]
+      html: `<div class="src-marker" style="background:${col}"></div>`,
+      className: '', iconSize: [14, 14], iconAnchor: [7, 7], popupAnchor: [0, -10]
     });
 
     const distKm = () => collectionPoint
@@ -118,7 +137,7 @@ function addSourceMarkers(springs) {
       : sp.distance_km;
 
     const m = L.marker([sp.lat, sp.lon], { icon }).addTo(leafletMap);
-    m.setOpacity(0);
+    m.setOpacity(0.38);
     m.on('click', () => {
       if (appState !== 'sources-visible') return;
       selectSource(sp);
@@ -129,116 +148,69 @@ function addSourceMarkers(springs) {
   });
 }
 
-/* ── STATE: VILLAGE SELECT ───────────────────────── */
-function enterVillageSelect() {
-  appState = 'village-select';
+/* ── STATE: BROWSE (initial) ─────────────────────── */
+function enterBrowseState() {
+  appState = 'browse';
   selectedVillage = null;
   collectionPoint = null;
+  document.getElementById('map').style.cursor = '';
+  setMapInstruction(false);
 
-  if (collectionMarker) { leafletMap.removeLayer(collectionMarker); collectionMarker = null; }
   if (_villageHighlight) { leafletMap.removeLayer(_villageHighlight); _villageHighlight = null; }
   if (_villageRadiusRing) { leafletMap.removeLayer(_villageRadiusRing); _villageRadiusRing = null; }
   if (_pipelineLayer) { leafletMap.removeLayer(_pipelineLayer); _pipelineLayer = null; }
+  if (_collectionMarker) { leafletMap.removeLayer(_collectionMarker); _collectionMarker = null; }
 
-  leafletMap.off('click', onMapClickForPoint);
-  document.getElementById('map').style.cursor = '';
-  hideMapInstruction();
-
-  _allSprings.forEach(sp => markerRefs[sp.id]?.setOpacity(0));
-  renderVillageSelectPanel();
+  _allSprings.forEach(sp => markerRefs[sp.id]?.setOpacity(0.38));
+  renderBrowsePanel();
 }
 
-/* ── STATE: POINT SELECT ─────────────────────────── */
-function enterPointSelect(village) {
-  appState = 'point-select';
+/* ── STATE: AREA FOCUSED ─────────────────────────── */
+function enterAreaFocused(lat, lon, radiusKm = 10, village = null) {
+  appState = 'sources-visible';
+  document.getElementById('map').style.cursor = '';
+  setMapInstruction(false);
   selectedVillage = village;
-  collectionPoint = null;
-
-  if (collectionMarker) { leafletMap.removeLayer(collectionMarker); collectionMarker = null; }
-  if (_villageRadiusRing) { leafletMap.removeLayer(_villageRadiusRing); _villageRadiusRing = null; }
-  if (_pipelineLayer) { leafletMap.removeLayer(_pipelineLayer); _pipelineLayer = null; }
-  _allSprings.forEach(sp => markerRefs[sp.id]?.setOpacity(0));
-
-  if (_villageHighlight) { leafletMap.removeLayer(_villageHighlight); }
-  const latlngs = village.polygon.map(([lon, lat]) => [lat, lon]);
-  _villageHighlight = L.polygon(latlngs, {
-    color: '#dc2626', weight: 2.5,
-    fillColor: '#dc2626', fillOpacity: 0.18
-  }).addTo(leafletMap);
-
-  leafletMap.flyTo([village.lat, village.lon], 13, { duration: 1.0 });
-  leafletMap.on('click', onMapClickForPoint);
-  document.getElementById('map').style.cursor = 'crosshair';
-  showMapInstruction('Click on the map to set your water collection point');
-
-  renderPointSelectPanel(village);
-}
-
-function onMapClickForPoint(e) {
-  if (appState !== 'point-select') return;
-  setCollectionPoint(e.latlng.lat, e.latlng.lng);
-}
-
-function setCollectionPoint(lat, lon) {
-  leafletMap.off('click', onMapClickForPoint);
-  document.getElementById('map').style.cursor = '';
-  hideMapInstruction();
-
   collectionPoint = { lat, lon };
 
-  if (collectionMarker) leafletMap.removeLayer(collectionMarker);
-  const icon = L.divIcon({
-    html: `<div class="cp-marker"><svg viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5S10.62 6.5 12 6.5s2.5 1.12 2.5 2.5S13.38 11.5 12 11.5z"/></svg></div>`,
-    className: '', iconSize: [32, 32], iconAnchor: [16, 32]
+  if (_villageHighlight) { leafletMap.removeLayer(_villageHighlight); _villageHighlight = null; }
+  if (_villageRadiusRing) { leafletMap.removeLayer(_villageRadiusRing); _villageRadiusRing = null; }
+  if (_pipelineLayer) { leafletMap.removeLayer(_pipelineLayer); _pipelineLayer = null; }
+  if (_collectionMarker) { leafletMap.removeLayer(_collectionMarker); _collectionMarker = null; }
+
+  const cpIcon = L.divIcon({
+    html: `<div class="cp-pin"></div>`,
+    className: '', iconSize: [20, 20], iconAnchor: [10, 10]
   });
-  collectionMarker = L.marker([lat, lon], { icon, zIndexOffset: 2000 }).addTo(leafletMap)
-    .bindTooltip('Collection point', { permanent: false, className: 'line-tooltip' });
+  _collectionMarker = L.marker([lat, lon], { icon: cpIcon, zIndexOffset: 700, interactive: false }).addTo(leafletMap);
 
-  enterSourcesVisible(lat, lon);
-}
+  if (village) {
+    const latlngs = village.polygon.map(([lo, la]) => [la, lo]);
+    _villageHighlight = L.polygon(latlngs, {
+      color: '#2563eb', weight: 2, dashArray: '6 4',
+      fillColor: '#2563eb', fillOpacity: 0.07, interactive: false
+    }).addTo(leafletMap);
+  }
 
-/* ── STATE: SOURCES VISIBLE ──────────────────────── */
-function enterSourcesVisible(lat, lon) {
-  appState = 'sources-visible';
+  _villageRadiusRing = L.circle([lat, lon], {
+    radius: radiusKm * 1000, color: '#2563eb', weight: 1.5, dashArray: '7 5',
+    fillOpacity: 0, interactive: false
+  }).addTo(leafletMap);
 
-  let nearby = _allSprings.filter(sp => haversineKm(lat, lon, sp.lat, sp.lon) <= 10);
+  let nearby = _allSprings.filter(sp => haversineKm(lat, lon, sp.lat, sp.lon) <= radiusKm);
   let fallback = false;
-
   if (nearby.length === 0) {
     fallback = true;
     nearby = [..._allSprings]
       .sort((a, b) => haversineKm(lat, lon, a.lat, a.lon) - haversineKm(lat, lon, b.lat, b.lon))
-      .slice(0, 3);
+      .slice(0, 5);
   }
 
   _allSprings.forEach(sp => {
-    const show = nearby.find(n => n.id === sp.id);
-    markerRefs[sp.id]?.setOpacity(show ? 1 : 0);
+    markerRefs[sp.id]?.setOpacity(nearby.find(n => n.id === sp.id) ? 1 : 0.15);
   });
 
-  if (_villageRadiusRing) leafletMap.removeLayer(_villageRadiusRing);
-  _villageRadiusRing = L.circle([lat, lon], {
-    radius: 10000, color: '#2563eb', weight: 1.5, dashArray: '7 5',
-    fillOpacity: 0, interactive: false
-  }).addTo(leafletMap);
-
   renderSourceListPanel(nearby, lat, lon, fallback);
-}
-
-/* ── MAP INSTRUCTION OVERLAY ─────────────────────── */
-function showMapInstruction(text) {
-  let el = document.getElementById('map-instruction');
-  if (!el) {
-    el = document.createElement('div');
-    el.id = 'map-instruction';
-    document.getElementById('map').appendChild(el);
-  }
-  el.textContent = text;
-  el.style.display = 'block';
-}
-function hideMapInstruction() {
-  const el = document.getElementById('map-instruction');
-  if (el) el.style.display = 'none';
 }
 
 /* ── LOCATION SEARCH (map geocoding) ─────────────── */
@@ -304,7 +276,7 @@ async function geocodeSearch(q, results) {
 
     data.slice(0, 4).forEach(r => {
       const parts = r.display_name.split(',');
-      html += `<div class="mos-item" onclick="flyToLocation(${r.lat},${r.lon},'${parts[0].replace(/'/g, "\\'")}')">
+      html += `<div class="mos-item" onclick="flyToArea(${r.lat},${r.lon},'${parts[0].replace(/'/g, "\\'")}')">
         <svg class="mos-pin" viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/></svg>
         <div><div class="mos-name">${parts[0]}</div><div class="mos-region">${parts.slice(1, 3).join(',').trim()}</div></div>
       </div>`;
@@ -319,24 +291,51 @@ async function geocodeSearch(q, results) {
 
 function selectVillageById(id) {
   const v = _allVillages.find(v => v.id === id);
-  if (v) enterPointSelect(v);
+  if (!v) return;
+  exitLandingMode();
+  leafletMap.flyTo([v.lat, v.lon], 13, { duration: 0.9 });
+  document.getElementById('location-results').style.display = 'none';
+
+  appState = 'point-select';
+  selectedVillage = v;
+  collectionPoint = null;
+
+  if (_villageHighlight) { leafletMap.removeLayer(_villageHighlight); _villageHighlight = null; }
+  if (_villageRadiusRing) { leafletMap.removeLayer(_villageRadiusRing); _villageRadiusRing = null; }
+  if (_pipelineLayer) { leafletMap.removeLayer(_pipelineLayer); _pipelineLayer = null; }
+
+  const latlngs = v.polygon.map(([lo, la]) => [la, lo]);
+  _villageHighlight = L.polygon(latlngs, {
+    color: '#2563eb', weight: 2, dashArray: '6 4',
+    fillColor: '#2563eb', fillOpacity: 0.07, interactive: false
+  }).addTo(leafletMap);
+
+  _allSprings.forEach(sp => markerRefs[sp.id]?.setOpacity(0.18));
+
+  document.getElementById('map').style.cursor = 'crosshair';
+  setMapInstruction(true, '📍 Click anywhere on the map to set your collection point');
+  renderPointSelectPanel(v);
 }
 
-function flyToLocation(lat, lon, name) {
-  leafletMap.flyTo([parseFloat(lat), parseFloat(lon)], 12, { duration: 1.2 });
+function flyToArea(lat, lon, name) {
+  const la = parseFloat(lat), lo = parseFloat(lon);
+  exitLandingMode();
+  leafletMap.flyTo([la, lo], 11, { duration: 1.2 });
+  enterAreaFocused(la, lo, 20, null);
   document.getElementById('location-results').style.display = 'none';
   document.getElementById('location-search').value = name;
 }
 
 /* ── DETAIL PANEL RENDERS ────────────────────────── */
-function renderVillageSelectPanel() {
+function renderBrowsePanel() {
   document.getElementById('detail-panel').innerHTML = `
     <div class="dp-welcome">
       <div class="dp-welcome-icon">
-        <svg viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
       </div>
-      <div class="dp-welcome-title">Select a Village</div>
-      <div class="dp-welcome-text">Click an orange marker on the map or search by village name to begin water source analysis.</div>
+      <div class="dp-welcome-title">Search to Explore</div>
+      <div class="dp-welcome-text">Use the search bar on the map to find a city or village in Romania. Water sources in that area will appear.</div>
+      <div class="dp-welcome-or">— or pick a village below —</div>
       <div class="dp-welcome-villages">
         ${_allVillages.map(v => `
           <button class="dp-village-btn" onclick="selectVillageById('${v.id}')">
@@ -364,7 +363,7 @@ function renderPointSelectPanel(village) {
         <div class="dp-title">${village.name}</div>
         <div class="dp-sub">${village.county} County</div>
       </div>
-      <button class="dp-back-btn" onclick="enterVillageSelect()">&#8592; Back</button>
+      <button class="dp-back-btn" onclick="enterBrowseState()">&#8592; Back</button>
     </div>
 
     <div class="vp-status-banner" style="border-color:${accessColor}40;background:${accessColor}0d">
@@ -445,7 +444,7 @@ function renderSourceListPanel(sources, lat, lon, fallback) {
         <div class="dp-title">Water Sources</div>
         <div class="dp-sub">${villageName} &middot; ${sorted.length} source${sorted.length !== 1 ? 's' : ''} found${fallback ? ' (nearest — none within 10 km)' : ' within 10 km'}</div>
       </div>
-      <button class="dp-back-btn" onclick="enterPointSelect(selectedVillage)">&#8592; Back</button>
+      <button class="dp-back-btn" onclick="enterBrowseState()">&#8592; Back</button>
     </div>
     <div class="src-list">
       ${sorted.map((sp, i) => {
@@ -480,20 +479,13 @@ function selectSource(sp) {
 
 function drawPipeline(sp) {
   if (_pipelineLayer) { leafletMap.removeLayer(_pipelineLayer); _pipelineLayer = null; }
-  if (!collectionPoint || !selectedVillage) return;
+  if (!collectionPoint) return;
 
-  const src  = [sp.lat, sp.lon];
-  const cp   = [collectionPoint.lat, collectionPoint.lon];
-  const vill = [selectedVillage.lat, selectedVillage.lon];
-
-  const seg1 = L.polyline([src, cp], {
+  const src = [sp.lat, sp.lon];
+  const cp  = [collectionPoint.lat, collectionPoint.lon];
+  _pipelineLayer = L.polyline([src, cp], {
     color: '#2563eb', weight: 3, dashArray: '10 6', opacity: 0.9, interactive: false
-  });
-  const seg2 = L.polyline([cp, vill], {
-    color: '#059669', weight: 3, dashArray: '6 6', opacity: 0.85, interactive: false
-  });
-
-  _pipelineLayer = L.layerGroup([seg1, seg2]).addTo(leafletMap);
+  }).addTo(leafletMap);
 }
 
 /* ── DETAIL VIEW ─────────────────────────────────── */
@@ -522,7 +514,7 @@ function renderDetail(sp) {
         </div>
         <div class="dp-sub">${sp.nearest_village} &middot; ${sp.type.charAt(0).toUpperCase() + sp.type.slice(1)}</div>
       </div>
-      <button class="dp-back-btn" onclick="enterSourcesVisible(collectionPoint.lat,collectionPoint.lon)">&#8592; List</button>
+      <button class="dp-back-btn" onclick="enterAreaFocused(collectionPoint.lat,collectionPoint.lon,selectedVillage?10:20,selectedVillage)">&#8592; List</button>
     </div>
 
     <div class="dp-feas-wrap">
@@ -825,7 +817,7 @@ async function init() {
 
   addVillageMarkers(_allVillages);
   addSourceMarkers(_allSprings);
-  renderVillageSelectPanel();
+  enterBrowseState();
   renderSourcesPanel(_allSprings);
   renderOverviewStats(_allSprings, _allVillages);
   initLocationSearch();
