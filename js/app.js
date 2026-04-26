@@ -830,32 +830,23 @@ async function downloadReport() {
     const CW = PAGE_W - M * 2;
 
     const C = {
-      blue:   [37, 99, 235],   blueD:  [29, 78, 216],
-      green:  [5, 150, 105],   orange: [180, 83, 9],
-      red:    [220, 38, 38],   dark:   [15, 23, 42],
-      sub:    [51, 65, 85],    muted:  [100, 116, 139],
-      border: [226, 232, 240], bg:     [248, 250, 252],
-      white:  [255, 255, 255], stripe: [241, 245, 249],
+      blue:   [37, 99, 235],  blueD:  [29, 78, 216],
+      green:  [5, 150, 105],  orange: [180, 83, 9],
+      red:    [220, 38, 38],  dark:   [15, 23, 42],
+      sub:    [51, 65, 85],   muted:  [100, 116, 139],
+      border: [226, 232, 240],bg:     [248, 250, 252],
+      white:  [255, 255, 255],stripe: [241, 245, 249],
+      card:   [255, 255, 255],
     };
 
-    function feasRgb(s) {
-      if (s >= 80) return C.green;
-      if (s >= 60) return C.blue;
-      if (s >= 40) return C.orange;
-      return C.red;
-    }
+    const feasRgb = s => s >= 80 ? C.green : s >= 60 ? C.blue : s >= 40 ? C.orange : C.red;
 
-    // Load logo as base64
+    // Load logo
     let logoDataUrl = null;
     try {
-      const resp = await fetch('H2Oolkit.png');
-      const blob = await resp.blob();
-      logoDataUrl = await new Promise(res => {
-        const r = new FileReader();
-        r.onload = e => res(e.target.result);
-        r.readAsDataURL(blob);
-      });
-    } catch (_) { /* logo optional */ }
+      const blob = await (await fetch('H2Oolkit.png')).blob();
+      logoDataUrl = await new Promise(res => { const r = new FileReader(); r.onload = e => res(e.target.result); r.readAsDataURL(blob); });
+    } catch (_) {}
 
     const top5     = _rankedSources.slice(0, 5);
     const location = _currentLocationName || 'Unknown Location';
@@ -863,123 +854,156 @@ async function downloadReport() {
     const cp       = _lastAnalysisResult?.collection_point;
     const dateStr  = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' });
 
+    // ── helpers ──
+    const sectionTitle = (text, yPos) => {
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(11);
+      doc.setTextColor(...C.dark);
+      doc.text(text, M, yPos);
+      doc.setDrawColor(...C.border);
+      doc.setLineWidth(0.35);
+      doc.line(M, yPos + 2.5, PAGE_W - M, yPos + 2.5);
+      return yPos + 10;
+    };
+
     let y = 0;
 
-    // ── Header band ──
+    // ════════════════════════════════════════════════
+    // HEADER
+    // ════════════════════════════════════════════════
     doc.setFillColor(...C.blue);
-    doc.rect(0, 0, PAGE_W, 38, 'F');
+    doc.rect(0, 0, PAGE_W, 40, 'F');
+    // subtle darker triangle accent
     doc.setFillColor(...C.blueD);
-    doc.triangle(PAGE_W - 60, 0, PAGE_W, 0, PAGE_W, 38, 'F');
+    doc.triangle(PAGE_W - 55, 0, PAGE_W, 0, PAGE_W, 40, 'F');
 
     if (logoDataUrl) {
-      doc.addImage(logoDataUrl, 'PNG', M, 7, 22, 22);
+      doc.addImage(logoDataUrl, 'PNG', M, 8, 22, 22);
       doc.setTextColor(...C.white);
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(15);
-      doc.text('Water Source Analysis Report', M + 26, 19);
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(8.5);
-      doc.text('H2Oolkit — Spring Source Detection Platform', M + 26, 27);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(16);
+      doc.text('Water Source Analysis Report', M + 27, 20);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5);
+      doc.setTextColor(200, 220, 255);
+      doc.text('H2Oolkit · Spring Source Detection Platform', M + 27, 28);
     } else {
       doc.setTextColor(...C.white);
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(17);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(16);
       doc.text('H2Oolkit', M, 20);
-      doc.setFontSize(11);
-      doc.setFont('helvetica', 'normal');
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
       doc.text('Water Source Analysis Report', M, 29);
     }
 
-    doc.setTextColor(...C.white);
-    doc.setFontSize(8);
-    doc.setFont('helvetica', 'normal');
-    doc.text(dateStr, PAGE_W - M, 18, { align: 'right' });
-    doc.text('CASSINI Hackathon — Space for Water', PAGE_W - M, 26, { align: 'right' });
+    doc.setTextColor(200, 220, 255);
+    doc.setFontSize(7.5); doc.setFont('helvetica', 'normal');
+    doc.text(dateStr, PAGE_W - M, 19, { align: 'right' });
+    doc.text('CASSINI Hackathon — Space for Water', PAGE_W - M, 27, { align: 'right' });
 
-    y = 46;
+    y = 48;
 
-    // Location strip
+    // ── Location / meta strip ──
     doc.setFillColor(...C.bg);
-    doc.setDrawColor(...C.border);
-    doc.setLineWidth(0.3);
-    doc.roundedRect(M, y, CW, 13, 2, 2, 'FD');
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(7.5);
-    doc.setTextColor(...C.muted);
-    doc.text('LOCATION', M + 4, y + 8.5);
-    doc.setFontSize(9);
+    doc.setDrawColor(...C.border); doc.setLineWidth(0.3);
+    doc.roundedRect(M, y, CW, 14, 2, 2, 'FD');
+
+    // pin icon (simple circle + dot)
+    doc.setFillColor(...C.blue);
+    doc.circle(M + 7, y + 7, 3, 'F');
+    doc.setFillColor(...C.white);
+    doc.circle(M + 7, y + 7, 1.2, 'F');
+
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5);
     doc.setTextColor(...C.dark);
-    doc.text(location, M + 26, y + 8.5);
+    doc.text(location, M + 13, y + 9);
+
     if (cp) {
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(8);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5);
       doc.setTextColor(...C.muted);
-      doc.text(`${cp.lat.toFixed(5)}°N  ${cp.lon.toFixed(5)}°E`, PAGE_W - M - 4, y + 8.5, { align: 'right' });
+      doc.text(`${cp.lat.toFixed(4)}°N  ${cp.lon.toFixed(4)}°E`, PAGE_W - M - 4, y + 9, { align: 'right' });
     }
 
     y += 22;
 
-    // Section title: Top 5
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(13);
-    doc.setTextColor(...C.dark);
-    doc.text('Top 5 Water Sources', M, y);
-    y += 6;
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8);
-    doc.setTextColor(...C.muted);
-    doc.text('Ranked by composite feasibility score — satellite analysis · terrain · cost efficiency', M, y);
-    y += 8;
+    // ════════════════════════════════════════════════
+    // SUMMARY TABLE  (no Flow / Feed — only useful cols)
+    // ════════════════════════════════════════════════
+    y = sectionTitle('Top 5 Ranked Water Sources', y);
 
-    // Summary table
-    const thead = [['#', 'Source Name', 'Type', 'Score', 'Route', 'Elev.', 'Flow', 'Feed']];
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5);
+    doc.setTextColor(...C.muted);
+    doc.text('Composite feasibility score · satellite + terrain + cost analysis', M, y - 3);
+
+    // Decide which optional columns to show
+    const anyFlow   = top5.some(s => (s.estimated_daily_flow_liters || 0) > 0);
+    const mixedFeed = top5.some(s => s.cost?.needs_pumping) && top5.some(s => !s.cost?.needs_pumping);
+
+    const cols = [
+      { header: '#',           width: 9,  align: 'center' },
+      { header: 'Source Name', width: 50, align: 'left'   },
+      { header: 'Type',        width: 26, align: 'left'   },
+      { header: 'Score',       width: 18, align: 'center' },
+      { header: 'Route',       width: 22, align: 'center' },
+      { header: 'Elevation',   width: 22, align: 'center' },
+      { header: 'Supply%',     width: 18, align: 'center' },
+      ...(anyFlow   ? [{ header: 'Flow',   width: 16, align: 'center' }] : []),
+      ...(mixedFeed ? [{ header: 'Feed',   width: 16, align: 'center' }] : []),
+    ];
+
     const tbody = top5.map(src => {
-      const fs      = src.feasibility_score ?? 0;
-      const route   = src.route || {};
-      const cost    = src.cost  || {};
-      const distKm  = (route.terrain_adjusted_distance_km ?? (src.distance_m / 1000)).toFixed(2) + ' km';
-      const elevDiff = Math.round(route.elevation_difference_m ?? 0);
-      const flowM3  = Math.round((src.estimated_daily_flow_liters || 0) / 1000);
-      return [
+      const fs        = src.feasibility_score ?? 0;
+      const route     = src.route || {};
+      const cost      = src.cost  || {};
+      const distKm    = (route.terrain_adjusted_distance_km ?? (src.distance_m / 1000)).toFixed(2) + ' km';
+      const elevDiff  = Math.round(route.elevation_difference_m ?? 0);
+      const flowM3    = Math.round((src.estimated_daily_flow_liters || 0) / 1000);
+      const supplyCov = cost.supply_covers_demand_pct != null ? `${cost.supply_covers_demand_pct}%` : '—';
+      const row = [
         `#${src.feasibility_rank ?? '?'}`,
         src.name,
         TYPE_LABEL[src.source_type] ?? src.source_type,
-        `${Math.round(fs)}/100`,
+        `${Math.round(fs)}`,
         distKm,
         `${elevDiff >= 0 ? '+' : ''}${elevDiff} m`,
-        `${flowM3} m³/d`,
-        cost.needs_pumping ? 'Pumped' : 'Gravity',
+        supplyCov,
+        ...(anyFlow   ? [`${flowM3} m³/d`]                           : []),
+        ...(mixedFeed ? [cost.needs_pumping ? 'Pumped' : 'Gravity']  : []),
       ];
+      return row;
+    });
+
+    const colStyles = {};
+    cols.forEach((col, i) => {
+      colStyles[i] = { cellWidth: col.width, halign: col.align };
+      if (i === 0) colStyles[i].fontStyle = 'bold';
     });
 
     doc.autoTable({
-      head: thead, body: tbody,
+      head: [cols.map(c => c.header)],
+      body: tbody,
       startY: y,
       margin: { left: M, right: M },
+      tableWidth: CW,
       styles: {
         font: 'helvetica', fontSize: 8.5,
-        cellPadding: { top: 4, bottom: 4, left: 3, right: 3 },
-        textColor: C.dark, lineColor: C.border, lineWidth: 0.25,
+        cellPadding: { top: 4.5, bottom: 4.5, left: 3, right: 3 },
+        textColor: C.dark, lineColor: C.border, lineWidth: 0.2,
+        overflow: 'ellipsize',
       },
-      headStyles: { fillColor: C.blue, textColor: C.white, fontStyle: 'bold', fontSize: 8.5 },
-      columnStyles: {
-        0: { cellWidth: 9,  halign: 'center', fontStyle: 'bold' },
-        1: { cellWidth: 44 },
-        2: { cellWidth: 24 },
-        3: { cellWidth: 20, halign: 'center' },
-        4: { cellWidth: 22, halign: 'center' },
-        5: { cellWidth: 19, halign: 'center' },
-        6: { cellWidth: 18, halign: 'center' },
-        7: { cellWidth: 18, halign: 'center' },
+      headStyles: {
+        fillColor: C.blue, textColor: C.white,
+        fontStyle: 'bold', fontSize: 8, halign: 'center',
       },
+      columnStyles: colStyles,
       didParseCell: data => {
         if (data.section !== 'body') return;
+        // alternating row tint
         if (data.row.index % 2 === 0) data.cell.styles.fillColor = C.stripe;
+        // score column — colour-coded + bold
         if (data.column.index === 3) {
           const s = parseInt(data.cell.raw);
           if (!isNaN(s)) { data.cell.styles.textColor = feasRgb(s); data.cell.styles.fontStyle = 'bold'; }
         }
-        if (data.column.index === 7) {
+        // feed column (last, if present)
+        if (mixedFeed && data.column.index === cols.length - 1) {
           data.cell.styles.textColor = data.cell.raw === 'Gravity' ? C.green : C.orange;
           data.cell.styles.fontStyle = 'bold';
         }
@@ -988,151 +1012,147 @@ async function downloadReport() {
 
     y = doc.lastAutoTable.finalY + 14;
 
-    // ── Per-source detail cards ──
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(13);
-    doc.setTextColor(...C.dark);
-    doc.text('Source Details', M, y);
-    y += 3;
-    doc.setDrawColor(...C.border);
-    doc.setLineWidth(0.4);
-    doc.line(M, y + 2, PAGE_W - M, y + 2);
-    y += 10;
+    // ════════════════════════════════════════════════
+    // PER-SOURCE DETAIL CARDS
+    // ════════════════════════════════════════════════
+    y = sectionTitle('Source Details', y);
 
     top5.forEach((src, i) => {
-      const hasRec = !!src.recommendation;
-      const blockH = hasRec ? 68 : 52;
+      const fs    = src.feasibility_score ?? 0;
+      const fc    = feasRgb(fs);
+      const route = src.route || {};
+      const cost  = src.cost  || {};
+      const verd  = recVerdict(fs);
+      const distKm = (route.terrain_adjusted_distance_km ?? (src.distance_m / 1000)).toFixed(2);
+      const elev   = Math.round(route.elevation_difference_m ?? 0);
+      const flowM3 = Math.round((src.estimated_daily_flow_liters || 0) / 1000);
+
+      // Build only metrics that have real values
+      const rawMetrics = [
+        ['PIPELINE',      `${distKm} km`],
+        ['ELEVATION',     `${elev >= 0 ? '+' : ''}${elev} m`],
+        ...(flowM3 > 0          ? [['DAILY FLOW', `${flowM3} m³/d`]]                         : []),
+        ...(cost.needs_pumping != null ? [['FEED TYPE', cost.needs_pumping ? 'Pumped' : 'Gravity']] : []),
+        ...(cost.supply_covers_demand_pct != null ? [['SUPPLY COVER', `${cost.supply_covers_demand_pct}%`]] : []),
+        ...(route.pipe_diameter_mm      ? [['PIPE ⌀',   `${route.pipe_diameter_mm} mm`]]     : []),
+        ...(cost.reservoir_m3           ? [['RESERVOIR', `${cost.reservoir_m3} m³`]]          : []),
+        ...(src.eu_hydro_linked != null ? [['EU-HYDRO', src.eu_hydro_linked ? 'Verified ✓' : 'Not linked']] : []),
+      ];
+
+      // Cap at 8 metrics (2 rows × 4 cols)
+      const metrics = rawMetrics.slice(0, 8);
+      const metricRows = Math.ceil(metrics.length / 4);
+      const hasRec  = !!src.recommendation;
+      const recH    = hasRec ? 18 : 0;
+      const blockH  = 22 + metricRows * 12 + recH + 6;
+
       if (y + blockH > PAGE_H - 22) {
         addPageFooter(doc, PAGE_W, PAGE_H, M, C, doc.internal.getNumberOfPages());
         doc.addPage();
         y = M;
       }
 
-      const fs    = src.feasibility_score ?? 0;
-      const fc    = feasRgb(fs);
-      const route = src.route || {};
-      const cost  = src.cost  || {};
-      const distKm = (route.terrain_adjusted_distance_km ?? (src.distance_m / 1000)).toFixed(2);
-      const elev  = Math.round(route.elevation_difference_m ?? 0);
-      const flowM3 = Math.round((src.estimated_daily_flow_liters || 0) / 1000);
-      const verd  = recVerdict(fs);
-
-      // Card background
-      doc.setFillColor(...C.bg);
-      doc.setDrawColor(...C.border);
-      doc.setLineWidth(0.3);
-      doc.roundedRect(M, y, CW, blockH, 3, 3, 'FD');
+      // White card with border
+      doc.setFillColor(...C.card);
+      doc.setDrawColor(...C.border); doc.setLineWidth(0.25);
+      doc.roundedRect(M, y, CW, blockH, 2.5, 2.5, 'FD');
 
       // Left accent bar
       doc.setFillColor(...fc);
-      doc.roundedRect(M, y, 4, blockH, 3, 3, 'F');
-      doc.rect(M + 1, y, 3, blockH, 'F');
+      doc.roundedRect(M, y, 3.5, blockH, 2.5, 2.5, 'F');
+      doc.rect(M + 1, y, 2.5, blockH, 'F');
 
-      // Rank circle
+      // Rank badge
       doc.setFillColor(...fc);
-      doc.circle(M + 14, y + 10, 6, 'F');
+      doc.roundedRect(M + 7, y + 6, 12, 10, 1.5, 1.5, 'F');
       doc.setTextColor(...C.white);
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(8);
-      doc.text(`${src.feasibility_rank ?? i + 1}`, M + 14, y + 12.5, { align: 'center' });
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5);
+      doc.text(`#${src.feasibility_rank ?? i + 1}`, M + 13, y + 12.5, { align: 'center' });
 
-      // Name & verdict
+      // Name
       doc.setTextColor(...C.dark);
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(10.5);
-      doc.text(src.name, M + 23, y + 9);
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(8);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(10);
+      doc.text(src.name, M + 23, y + 10);
+
+      // Subtitle: type · verdict
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5);
       doc.setTextColor(...C.muted);
-      doc.text(`${TYPE_LABEL[src.source_type] ?? src.source_type}  ·  ${verd.title}`, M + 23, y + 15.5);
+      doc.text(`${TYPE_LABEL[src.source_type] ?? src.source_type}  ·  ${verd.title}`, M + 23, y + 16.5);
 
-      // Score pill (top-right)
+      // Score pill — top right
+      const scoreW = 22;
       doc.setFillColor(...fc);
-      doc.roundedRect(PAGE_W - M - 24, y + 5, 20, 10, 2, 2, 'F');
+      doc.roundedRect(PAGE_W - M - scoreW - 2, y + 5, scoreW, 11, 2, 2, 'F');
       doc.setTextColor(...C.white);
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(10);
-      doc.text(`${Math.round(fs)}`, PAGE_W - M - 15, y + 12, { align: 'center' });
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(11);
+      doc.text(`${Math.round(fs)}`, PAGE_W - M - scoreW / 2 - 2 + 3, y + 12.5, { align: 'center' });
       doc.setFontSize(6.5);
-      doc.text('/100', PAGE_W - M - 6, y + 12, { align: 'right' });
+      doc.text('/100', PAGE_W - M - 4, y + 12.5, { align: 'right' });
 
-      // 8-cell metric grid (2 rows × 4 cols)
-      const metrics = [
-        ['PIPELINE',    `${distKm} km`],
-        ['ELEVATION',   `${elev >= 0 ? '+' : ''}${elev} m`],
-        ['DAILY FLOW',  `${flowM3} m³/d`],
-        ['FEED TYPE',   cost.needs_pumping ? 'Pumped' : 'Gravity'],
-        ['PIPE ⌀',      `${route.pipe_diameter_mm ?? '—'} mm`],
-        ['SUPPLY COVER',`${cost.supply_covers_demand_pct ?? '?'}%`],
-        ['RESERVOIR',   `${cost.reservoir_m3 ?? '—'} m³`],
-        ['EU-HYDRO',    src.eu_hydro_linked === true ? 'Verified ✓' : src.eu_hydro_linked === false ? 'Not linked' : '—'],
-      ];
+      // Metric grid
       const colW  = CW / 4;
-      const startX = M + 6;
-      const startY = y + 24;
+      const gx    = M + 6;
+      const gy    = y + 24;
       metrics.forEach((m, mi) => {
         const col = mi % 4;
         const row = Math.floor(mi / 4);
-        const mx = startX + col * colW;
-        const my = startY + row * 11;
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(6.5);
+        const mx  = gx + col * colW;
+        const my  = gy + row * 12;
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(6);
         doc.setTextColor(...C.muted);
         doc.text(m[0], mx, my);
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(8.5);
-        doc.setTextColor(...C.dark);
-        doc.text(m[1], mx, my + 5.5);
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5);
+        // colour-code feed type in the card too
+        if (m[0] === 'FEED TYPE') {
+          doc.setTextColor(...(m[1] === 'Gravity' ? C.green : C.orange));
+        } else if (m[0] === 'EU-HYDRO') {
+          doc.setTextColor(...(m[1].startsWith('Verified') ? C.green : C.muted));
+        } else {
+          doc.setTextColor(...C.dark);
+        }
+        doc.text(m[1], mx, my + 6);
       });
 
       // Recommendation quote
       if (hasRec) {
-        const recY = y + blockH - 16;
-        doc.setDrawColor(...fc);
-        doc.setLineWidth(0.8);
-        doc.line(M + 6, recY, M + 6, recY + 11);
-        doc.setLineWidth(0.3);
-        const lines = doc.splitTextToSize(src.recommendation, CW - 18);
-        doc.setFont('helvetica', 'italic');
-        doc.setFontSize(7.5);
+        const recY = y + blockH - recH;
+        doc.setFillColor(...C.bg);
+        const recLines = doc.splitTextToSize(src.recommendation, CW - 14);
+        doc.rect(M, recY, CW, recH, 'F');
+        doc.setDrawColor(...fc); doc.setLineWidth(0.8);
+        doc.line(M + 5, recY + 2, M + 5, recY + recH - 2);
+        doc.setLineWidth(0.25);
+        doc.setFont('helvetica', 'italic'); doc.setFontSize(7.5);
         doc.setTextColor(...C.sub);
-        doc.text(lines.slice(0, 2), M + 10, recY + 4.5, { lineHeightFactor: 1.5 });
+        doc.text(recLines.slice(0, 2), M + 9, recY + 6.5, { lineHeightFactor: 1.55 });
       }
 
-      y += blockH + 8;
+      y += blockH + 7;
     });
 
-    // ── Weather / climate section ──
-    if (weather && weather.mean_annual_precipitation_mm) {
-      if (y + 55 > PAGE_H - 22) {
+    // ════════════════════════════════════════════════
+    // CLIMATE SECTION
+    // ════════════════════════════════════════════════
+    if (weather?.mean_annual_precipitation_mm) {
+      if (y + 60 > PAGE_H - 22) {
         addPageFooter(doc, PAGE_W, PAGE_H, M, C, doc.internal.getNumberOfPages());
         doc.addPage();
         y = M;
       }
 
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(12);
-      doc.setTextColor(...C.dark);
-      doc.text('Climate & Precipitation', M, y);
-      y += 3;
-      doc.setDrawColor(...C.border);
-      doc.setLineWidth(0.4);
-      doc.line(M, y + 1, PAGE_W - M, y + 1);
-      y += 9;
+      y = sectionTitle('Climate & Precipitation', y);
 
       if (weather.recommendation) {
-        const wLines = doc.splitTextToSize(weather.recommendation, CW - 14);
-        doc.setFillColor(...C.bg);
-        doc.rect(M, y, CW, wLines.length * 5.5 + 8, 'F');
-        doc.setDrawColor(...C.blue);
-        doc.setLineWidth(0.8);
-        doc.line(M, y, M, y + wLines.length * 5.5 + 8);
-        doc.setLineWidth(0.3);
-        doc.setFont('helvetica', 'italic');
-        doc.setFontSize(8);
+        const wLines = doc.splitTextToSize(weather.recommendation, CW - 12);
+        const bH = wLines.length * 5.5 + 8;
+        doc.setFillColor(...C.bg); doc.rect(M, y, CW, bH, 'F');
+        doc.setDrawColor(...C.blue); doc.setLineWidth(0.8);
+        doc.line(M, y, M, y + bH);
+        doc.setLineWidth(0.25);
+        doc.setFont('helvetica', 'italic'); doc.setFontSize(8);
         doc.setTextColor(...C.sub);
-        doc.text(wLines, M + 6, y + 5, { lineHeightFactor: 1.5 });
-        y += wLines.length * 5.5 + 13;
+        doc.text(wLines, M + 6, y + 5.5, { lineHeightFactor: 1.5 });
+        y += bH + 8;
       }
 
       const wRows = [
@@ -1142,15 +1162,12 @@ async function downloadReport() {
         ['Climate Data Confidence',            `${Math.round((weather.confidence ?? 0) * 100)}%`],
       ];
       wRows.forEach((row, ri) => {
-        if (ri % 2 === 0) { doc.setFillColor(...C.stripe); doc.rect(M, y - 1, CW, 8, 'F'); }
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(8.5);
-        doc.setTextColor(...C.sub);
-        doc.text(row[0], M + 3, y + 4.5);
-        doc.setFont('helvetica', 'bold');
-        doc.setTextColor(...C.dark);
-        doc.text(row[1], PAGE_W - M - 3, y + 4.5, { align: 'right' });
-        y += 8;
+        if (ri % 2 === 0) { doc.setFillColor(...C.stripe); doc.rect(M, y - 1, CW, 8.5, 'F'); }
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(...C.sub);
+        doc.text(row[0], M + 4, y + 5);
+        doc.setFont('helvetica', 'bold'); doc.setTextColor(...C.dark);
+        doc.text(row[1], PAGE_W - M - 4, y + 5, { align: 'right' });
+        y += 8.5;
       });
     }
 
