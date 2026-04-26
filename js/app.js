@@ -55,6 +55,17 @@ function feasLabel(score) {
 
 function fmtNum(n)  { return Math.round(n).toLocaleString('de-DE'); }
 
+// Returns a human-readable label for a source, replacing generic "Unnamed …" strings.
+// rankIndex is 0-based position in the ranked list (optional).
+function srcLabel(src, rankIndex) {
+  const raw = (src.name || '').trim();
+  const isUnnamed = !raw || /^unnamed\b/i.test(raw) || raw === '—';
+  if (!isUnnamed) return raw;
+  const type  = TYPE_LABEL[src.source_type] ?? 'Source';
+  const num   = src.feasibility_rank ?? (rankIndex != null ? rankIndex + 1 : '');
+  return num ? `${type} #${num}` : type;
+}
+
 function haversineKm(lat1, lon1, lat2, lon2) {
   const R = 6371, toRad = d => d * Math.PI / 180;
   const dLat = toRad(lat2 - lat1), dLon = toRad(lon2 - lon1);
@@ -279,7 +290,7 @@ function addSourceMarkers(sources) {
     });
     const m = L.marker([src.lat, src.lon], { icon, zIndexOffset: 400 }).addTo(leafletMap);
     m.bindTooltip(
-      `<b>${escapeHtml(src.name)}</b><br>${TYPE_LABEL[src.source_type] ?? src.source_type}`,
+      `<b>${escapeHtml(srcLabel(src))}</b><br>${TYPE_LABEL[src.source_type] ?? src.source_type}`,
       { direction: 'top', offset: [0, -6] }
     );
     m.on('click', e => {
@@ -617,7 +628,7 @@ function renderDetailPanel(src) {
       <div>
         <div class="dp-title" style="display:flex;align-items:center;gap:7px">
           <span class="src-icon-sm" style="background:${col}20;color:${col}">${icon}</span>
-          ${escapeHtml(src.name)}
+          ${escapeHtml(srcLabel(src))}
         </div>
         <div class="dp-sub">
           ${escapeHtml(_currentLocationName)} &middot; ${TYPE_LABEL[src.source_type] ?? src.source_type}
@@ -841,6 +852,22 @@ async function downloadReport() {
 
     const feasRgb = s => s >= 80 ? C.green : s >= 60 ? C.blue : s >= 40 ? C.orange : C.red;
 
+    // ── Load Unicode font (Roboto) for Romanian character support ──
+    // pdfMake's vfs_fonts.js ships complete Roboto TTFs as base64 — no fetch needed.
+    let F = 'helvetica';
+    try {
+      const vfs = window.pdfMake?.vfs;
+      if (vfs?.['Roboto-Regular.ttf'] && vfs?.['Roboto-Medium.ttf'] && vfs?.['Roboto-Italic.ttf']) {
+        doc.addFileToVFS('Roboto-Regular.ttf',  vfs['Roboto-Regular.ttf']);
+        doc.addFont('Roboto-Regular.ttf',  'Roboto', 'normal');
+        doc.addFileToVFS('Roboto-Medium.ttf',   vfs['Roboto-Medium.ttf']);
+        doc.addFont('Roboto-Medium.ttf',   'Roboto', 'bold');
+        doc.addFileToVFS('Roboto-Italic.ttf',   vfs['Roboto-Italic.ttf']);
+        doc.addFont('Roboto-Italic.ttf',   'Roboto', 'italic');
+        F = 'Roboto';
+      }
+    } catch (_) { /* keep helvetica fallback */ }
+
     // Load logo
     let logoDataUrl = null;
     try {
@@ -856,7 +883,7 @@ async function downloadReport() {
 
     // ── helpers ──
     const sectionTitle = (text, yPos) => {
-      doc.setFont('helvetica', 'bold');
+      doc.setFont(F, 'bold');
       doc.setFontSize(11);
       doc.setTextColor(...C.dark);
       doc.text(text, M, yPos);
@@ -875,26 +902,26 @@ async function downloadReport() {
     doc.rect(0, 0, PAGE_W, 40, 'F');
     // subtle darker triangle accent
     doc.setFillColor(...C.blueD);
-    doc.triangle(PAGE_W - 55, 0, PAGE_W, 0, PAGE_W, 40, 'F');
+    doc.lines([[55, 0], [0, 40], [-55, -40]], PAGE_W - 55, 0, [1, 1], 'F', true);
 
     if (logoDataUrl) {
       doc.addImage(logoDataUrl, 'PNG', M, 8, 22, 22);
       doc.setTextColor(...C.white);
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(16);
+      doc.setFont(F, 'bold'); doc.setFontSize(16);
       doc.text('Water Source Analysis Report', M + 27, 20);
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5);
+      doc.setFont(F, 'normal'); doc.setFontSize(8.5);
       doc.setTextColor(200, 220, 255);
       doc.text('H2Oolkit · Spring Source Detection Platform', M + 27, 28);
     } else {
       doc.setTextColor(...C.white);
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(16);
+      doc.setFont(F, 'bold'); doc.setFontSize(16);
       doc.text('H2Oolkit', M, 20);
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
+      doc.setFont(F, 'normal'); doc.setFontSize(10);
       doc.text('Water Source Analysis Report', M, 29);
     }
 
     doc.setTextColor(200, 220, 255);
-    doc.setFontSize(7.5); doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5); doc.setFont(F, 'normal');
     doc.text(dateStr, PAGE_W - M, 19, { align: 'right' });
     doc.text('CASSINI Hackathon — Space for Water', PAGE_W - M, 27, { align: 'right' });
 
@@ -907,16 +934,16 @@ async function downloadReport() {
 
     // pin icon (simple circle + dot)
     doc.setFillColor(...C.blue);
-    doc.circle(M + 7, y + 7, 3, 'F');
+    doc.ellipse(M + 7, y + 7, 3, 3, 'F');
     doc.setFillColor(...C.white);
-    doc.circle(M + 7, y + 7, 1.2, 'F');
+    doc.ellipse(M + 7, y + 7, 1.2, 1.2, 'F');
 
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5);
+    doc.setFont(F, 'bold'); doc.setFontSize(9.5);
     doc.setTextColor(...C.dark);
     doc.text(location, M + 13, y + 9);
 
     if (cp) {
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5);
+      doc.setFont(F, 'normal'); doc.setFontSize(7.5);
       doc.setTextColor(...C.muted);
       doc.text(`${cp.lat.toFixed(4)}°N  ${cp.lon.toFixed(4)}°E`, PAGE_W - M - 4, y + 9, { align: 'right' });
     }
@@ -928,53 +955,48 @@ async function downloadReport() {
     // ════════════════════════════════════════════════
     y = sectionTitle('Top 5 Ranked Water Sources', y);
 
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5);
+    doc.setFont(F, 'normal'); doc.setFontSize(7.5);
     doc.setTextColor(...C.muted);
     doc.text('Composite feasibility score · satellite + terrain + cost analysis', M, y - 3);
 
-    // Decide which optional columns to show
-    const anyFlow   = top5.some(s => (s.estimated_daily_flow_liters || 0) > 0);
-    const mixedFeed = top5.some(s => s.cost?.needs_pumping) && top5.some(s => !s.cost?.needs_pumping);
-
+    // Fixed columns — widths sum to CW (174 mm)
+    // #:14  Name:58  Type:24  Score:18  Route:30  Elev:30 = 174
     const cols = [
-      { header: '#',           width: 9,  align: 'center' },
-      { header: 'Source Name', width: 50, align: 'left'   },
-      { header: 'Type',        width: 26, align: 'left'   },
+      { header: '#',           width: 14, align: 'center' },
+      { header: 'Source Name', width: 58, align: 'left'   },
+      { header: 'Type',        width: 24, align: 'left'   },
       { header: 'Score',       width: 18, align: 'center' },
-      { header: 'Route',       width: 22, align: 'center' },
-      { header: 'Elevation',   width: 22, align: 'center' },
-      { header: 'Supply%',     width: 18, align: 'center' },
-      ...(anyFlow   ? [{ header: 'Flow',   width: 16, align: 'center' }] : []),
-      ...(mixedFeed ? [{ header: 'Feed',   width: 16, align: 'center' }] : []),
+      { header: 'Route',       width: 30, align: 'center' },
+      { header: 'Elevation',   width: 30, align: 'center' },
     ];
 
-    const tbody = top5.map(src => {
-      const fs        = src.feasibility_score ?? 0;
-      const route     = src.route || {};
-      const cost      = src.cost  || {};
-      const distKm    = (route.terrain_adjusted_distance_km ?? (src.distance_m / 1000)).toFixed(2) + ' km';
-      const elevDiff  = Math.round(route.elevation_difference_m ?? 0);
-      const flowM3    = Math.round((src.estimated_daily_flow_liters || 0) / 1000);
-      const supplyCov = cost.supply_covers_demand_pct != null ? `${cost.supply_covers_demand_pct}%` : '—';
-      const row = [
-        `#${src.feasibility_rank ?? '?'}`,
-        src.name,
+    const tbody = top5.map((src, i) => {
+      const fs       = src.feasibility_score ?? 0;
+      const route    = src.route || {};
+      const cost     = src.cost  || {};
+      const distKm   = (route.terrain_adjusted_distance_km ?? (src.distance_m / 1000)).toFixed(2) + ' km';
+      const elevDiff = Math.round(route.elevation_difference_m ?? 0);
+      const feedStr  = cost.needs_pumping != null ? (cost.needs_pumping ? 'Pumped' : 'Gravity') : '—';
+      // Embed feed type as a suffix in the elevation cell to avoid extra column
+      const elevCell = `${elevDiff >= 0 ? '+' : ''}${elevDiff} m  ${feedStr}`;
+      return [
+        `#${src.feasibility_rank ?? i + 1}`,
+        srcLabel(src, i),
         TYPE_LABEL[src.source_type] ?? src.source_type,
         `${Math.round(fs)}`,
         distKm,
-        `${elevDiff >= 0 ? '+' : ''}${elevDiff} m`,
-        supplyCov,
-        ...(anyFlow   ? [`${flowM3} m³/d`]                           : []),
-        ...(mixedFeed ? [cost.needs_pumping ? 'Pumped' : 'Gravity']  : []),
+        elevCell,
       ];
-      return row;
     });
 
-    const colStyles = {};
-    cols.forEach((col, i) => {
-      colStyles[i] = { cellWidth: col.width, halign: col.align };
-      if (i === 0) colStyles[i].fontStyle = 'bold';
-    });
+    const colStyles = {
+      0: { cellWidth: 14, halign: 'center', fontStyle: 'bold' },
+      1: { cellWidth: 58, halign: 'left'   },
+      2: { cellWidth: 24, halign: 'left'   },
+      3: { cellWidth: 18, halign: 'center' },
+      4: { cellWidth: 30, halign: 'center' },
+      5: { cellWidth: 30, halign: 'center' },
+    };
 
     doc.autoTable({
       head: [cols.map(c => c.header)],
@@ -983,29 +1005,29 @@ async function downloadReport() {
       margin: { left: M, right: M },
       tableWidth: CW,
       styles: {
-        font: 'helvetica', fontSize: 8.5,
-        cellPadding: { top: 4.5, bottom: 4.5, left: 3, right: 3 },
+        font: F, fontSize: 8.5,
+        cellPadding: { top: 5, bottom: 5, left: 4, right: 4 },
         textColor: C.dark, lineColor: C.border, lineWidth: 0.2,
         overflow: 'ellipsize',
       },
       headStyles: {
         fillColor: C.blue, textColor: C.white,
-        fontStyle: 'bold', fontSize: 8, halign: 'center',
+        fontStyle: 'bold', fontSize: 8.5, halign: 'center',
       },
       columnStyles: colStyles,
       didParseCell: data => {
         if (data.section !== 'body') return;
-        // alternating row tint
         if (data.row.index % 2 === 0) data.cell.styles.fillColor = C.stripe;
-        // score column — colour-coded + bold
+        // Score column — colour-coded bold
         if (data.column.index === 3) {
           const s = parseInt(data.cell.raw);
           if (!isNaN(s)) { data.cell.styles.textColor = feasRgb(s); data.cell.styles.fontStyle = 'bold'; }
         }
-        // feed column (last, if present)
-        if (mixedFeed && data.column.index === cols.length - 1) {
-          data.cell.styles.textColor = data.cell.raw === 'Gravity' ? C.green : C.orange;
-          data.cell.styles.fontStyle = 'bold';
+        // Elevation+feed column — colour-code the feed word
+        if (data.column.index === 5) {
+          const raw = String(data.cell.raw);
+          if (raw.includes('Gravity')) data.cell.styles.textColor = C.green;
+          else if (raw.includes('Pumped')) data.cell.styles.textColor = C.orange;
         }
       },
     });
@@ -1040,14 +1062,15 @@ async function downloadReport() {
       ];
 
       // Cap at 8 metrics (2 rows × 4 cols)
-      const metrics = rawMetrics.slice(0, 8);
+      const metrics    = rawMetrics.slice(0, 8);
       const metricRows = Math.ceil(metrics.length / 4);
+      const hasGps  = !!(src.lat && src.lon);
       const hasRec  = !!src.recommendation;
       const recH    = hasRec ? 18 : 0;
-      const blockH  = 22 + metricRows * 12 + recH + 6;
+      const blockH  = 22 + (hasGps ? 5 : 0) + metricRows * 12 + recH + 6;
 
       if (y + blockH > PAGE_H - 22) {
-        addPageFooter(doc, PAGE_W, PAGE_H, M, C, doc.internal.getNumberOfPages());
+        addPageFooter(doc, PAGE_W, PAGE_H, M, C, doc.internal.getNumberOfPages(), F);
         doc.addPage();
         y = M;
       }
@@ -1057,51 +1080,59 @@ async function downloadReport() {
       doc.setDrawColor(...C.border); doc.setLineWidth(0.25);
       doc.roundedRect(M, y, CW, blockH, 2.5, 2.5, 'FD');
 
-      // Left accent bar
-      doc.setFillColor(...fc);
+      // Left accent bar — always blue
+      doc.setFillColor(...C.blue);
       doc.roundedRect(M, y, 3.5, blockH, 2.5, 2.5, 'F');
       doc.rect(M + 1, y, 2.5, blockH, 'F');
 
-      // Rank badge
-      doc.setFillColor(...fc);
+      // Rank badge — always blue
+      doc.setFillColor(...C.blue);
       doc.roundedRect(M + 7, y + 6, 12, 10, 1.5, 1.5, 'F');
       doc.setTextColor(...C.white);
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5);
+      doc.setFont(F, 'bold'); doc.setFontSize(8.5);
       doc.text(`#${src.feasibility_rank ?? i + 1}`, M + 13, y + 12.5, { align: 'center' });
 
       // Name
       doc.setTextColor(...C.dark);
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(10);
-      doc.text(src.name, M + 23, y + 10);
+      doc.setFont(F, 'bold'); doc.setFontSize(10);
+      doc.text(srcLabel(src, i), M + 23, y + 10);
 
-      // Subtitle: type · verdict
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5);
+      // Subtitle: type · verdict · GPS
+      const gpsStr = src.lat && src.lon
+        ? `${src.lat.toFixed(4)}°N  ${src.lon.toFixed(4)}°E`
+        : '';
+      doc.setFont(F, 'normal'); doc.setFontSize(7.5);
       doc.setTextColor(...C.muted);
       doc.text(`${TYPE_LABEL[src.source_type] ?? src.source_type}  ·  ${verd.title}`, M + 23, y + 16.5);
+      if (gpsStr) {
+        doc.setFont(F, 'normal'); doc.setFontSize(6.5);
+        doc.setTextColor(...C.blue);
+        doc.text(gpsStr, M + 23, y + 21.5);
+      }
 
-      // Score pill — top right
+      // Score pill — always blue background, score number colour-coded inside
       const scoreW = 22;
-      doc.setFillColor(...fc);
+      doc.setFillColor(...C.blue);
       doc.roundedRect(PAGE_W - M - scoreW - 2, y + 5, scoreW, 11, 2, 2, 'F');
       doc.setTextColor(...C.white);
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(11);
+      doc.setFont(F, 'bold'); doc.setFontSize(11);
       doc.text(`${Math.round(fs)}`, PAGE_W - M - scoreW / 2 - 2 + 3, y + 12.5, { align: 'center' });
       doc.setFontSize(6.5);
       doc.text('/100', PAGE_W - M - 4, y + 12.5, { align: 'right' });
 
-      // Metric grid
+      // Metric grid — start lower if GPS line was drawn
       const colW  = CW / 4;
       const gx    = M + 6;
-      const gy    = y + 24;
+      const gy    = y + (gpsStr ? 29 : 24);
       metrics.forEach((m, mi) => {
         const col = mi % 4;
         const row = Math.floor(mi / 4);
         const mx  = gx + col * colW;
         const my  = gy + row * 12;
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(6);
+        doc.setFont(F, 'bold'); doc.setFontSize(6);
         doc.setTextColor(...C.muted);
         doc.text(m[0], mx, my);
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5);
+        doc.setFont(F, 'bold'); doc.setFontSize(8.5);
         // colour-code feed type in the card too
         if (m[0] === 'FEED TYPE') {
           doc.setTextColor(...(m[1] === 'Gravity' ? C.green : C.orange));
@@ -1119,10 +1150,10 @@ async function downloadReport() {
         doc.setFillColor(...C.bg);
         const recLines = doc.splitTextToSize(src.recommendation, CW - 14);
         doc.rect(M, recY, CW, recH, 'F');
-        doc.setDrawColor(...fc); doc.setLineWidth(0.8);
+        doc.setDrawColor(...C.blue); doc.setLineWidth(0.8);
         doc.line(M + 5, recY + 2, M + 5, recY + recH - 2);
         doc.setLineWidth(0.25);
-        doc.setFont('helvetica', 'italic'); doc.setFontSize(7.5);
+        doc.setFont(F, 'italic'); doc.setFontSize(7.5);
         doc.setTextColor(...C.sub);
         doc.text(recLines.slice(0, 2), M + 9, recY + 6.5, { lineHeightFactor: 1.55 });
       }
@@ -1135,7 +1166,7 @@ async function downloadReport() {
     // ════════════════════════════════════════════════
     if (weather?.mean_annual_precipitation_mm) {
       if (y + 60 > PAGE_H - 22) {
-        addPageFooter(doc, PAGE_W, PAGE_H, M, C, doc.internal.getNumberOfPages());
+        addPageFooter(doc, PAGE_W, PAGE_H, M, C, doc.internal.getNumberOfPages(), F);
         doc.addPage();
         y = M;
       }
@@ -1149,7 +1180,7 @@ async function downloadReport() {
         doc.setDrawColor(...C.blue); doc.setLineWidth(0.8);
         doc.line(M, y, M, y + bH);
         doc.setLineWidth(0.25);
-        doc.setFont('helvetica', 'italic'); doc.setFontSize(8);
+        doc.setFont(F, 'italic'); doc.setFontSize(8);
         doc.setTextColor(...C.sub);
         doc.text(wLines, M + 6, y + 5.5, { lineHeightFactor: 1.5 });
         y += bH + 8;
@@ -1163,16 +1194,16 @@ async function downloadReport() {
       ];
       wRows.forEach((row, ri) => {
         if (ri % 2 === 0) { doc.setFillColor(...C.stripe); doc.rect(M, y - 1, CW, 8.5, 'F'); }
-        doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(...C.sub);
+        doc.setFont(F, 'normal'); doc.setFontSize(8.5); doc.setTextColor(...C.sub);
         doc.text(row[0], M + 4, y + 5);
-        doc.setFont('helvetica', 'bold'); doc.setTextColor(...C.dark);
+        doc.setFont(F, 'bold'); doc.setTextColor(...C.dark);
         doc.text(row[1], PAGE_W - M - 4, y + 5, { align: 'right' });
         y += 8.5;
       });
     }
 
     // Footer on last page
-    addPageFooter(doc, PAGE_W, PAGE_H, M, C, doc.internal.getNumberOfPages());
+    addPageFooter(doc, PAGE_W, PAGE_H, M, C, doc.internal.getNumberOfPages(), F);
 
     const fname = `H2Oolkit_${location.replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toISOString().slice(0, 10)}.pdf`;
     doc.save(fname);
@@ -1182,15 +1213,15 @@ async function downloadReport() {
   }
 }
 
-function addPageFooter(doc, PAGE_W, PAGE_H, M, C, pageNum) {
+function addPageFooter(doc, PAGE_W, PAGE_H, M, C, pageNum, F = 'helvetica') {
   const fy = PAGE_H - 13;
   doc.setFillColor(...C.blue);
   doc.rect(0, fy, PAGE_W, 13, 'F');
   doc.setTextColor(...C.white);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(F, 'bold');
   doc.setFontSize(8);
   doc.text('H2Oolkit', M, fy + 8);
-  doc.setFont('helvetica', 'normal');
+  doc.setFont(F, 'normal');
   doc.setFontSize(6.5);
   doc.text('Copernicus Sentinel-1/2  ·  EU-Hydro  ·  OpenStreetMap  ·  CASSINI Hackathon 2026', PAGE_W / 2, fy + 8, { align: 'center' });
   doc.text(`Page ${pageNum}`, PAGE_W - M, fy + 8, { align: 'right' });
@@ -1232,7 +1263,7 @@ function renderSourcesPanelRaw(sources) {
     <div class="bm-src-row" id="srcc-${sp.id}">
       <div class="bm-src-icon" style="background:${col}18;color:${col}">${TYPE_ICON[sp.source_type] ?? TYPE_ICON.spring}</div>
       <div class="bm-src-info">
-        <div class="bm-src-name">${escapeHtml(sp.name)}</div>
+        <div class="bm-src-name">${escapeHtml(srcLabel(sp))}</div>
         <div class="bm-src-meta">${TYPE_LABEL[sp.source_type] ?? sp.source_type} &middot; ${(sp.distance_m / 1000).toFixed(2)} km from search center</div>
       </div>
       <div class="bm-src-stats">
@@ -1259,7 +1290,7 @@ function renderSourcesPanel(ranked) {
       <div class="bm-src-rank" style="background:${fc}20;color:${fc}">#${sp.feasibility_rank ?? sp.rank ?? '?'}</div>
       <div class="bm-src-icon" style="background:${col}18;color:${col}">${TYPE_ICON[sp.source_type] ?? TYPE_ICON.spring}</div>
       <div class="bm-src-info">
-        <div class="bm-src-name">${escapeHtml(sp.name)}</div>
+        <div class="bm-src-name">${escapeHtml(srcLabel(sp, (sp.feasibility_rank ?? 1) - 1))}</div>
         <div class="bm-src-meta">
           ${TYPE_LABEL[sp.source_type] ?? sp.source_type} &middot; ${distKm} km
           ${pipeKm != null ? ' &middot; ' + pipeKm : ''}
@@ -1317,7 +1348,7 @@ function renderOverviewStats(result, ranked) {
   document.getElementById('overview-stats').innerHTML = `
     <div class="ov-best-card">
       <div class="ov-best-eyebrow">Best Option (rank #1)</div>
-      <div class="ov-best-name">${escapeHtml(best.name)}</div>
+      <div class="ov-best-name">${escapeHtml(srcLabel(best, 0))}</div>
       <div class="ov-best-details">
         <span style="color:${bestCol};font-weight:800">${Math.round(best.feasibility_score ?? 0)} feasibility</span>
         <span>${(best.route?.terrain_adjusted_distance_km ?? 0).toFixed(2)} km</span>
