@@ -88,7 +88,10 @@ function initMap() {
   leafletMap = L.map('map', {
     center: [46.0, 25.0], zoom: 7, zoomControl: true,
     maxBounds: ROMANIA_BOUNDS, maxBoundsViscosity: 1.0,
-    minZoom: 6, maxZoom: MAP_MAX_ZOOM,
+    // Allow half-step zoom so the dynamic minZoom can sit a bit looser than
+    // the exact "country fits viewport" zoom level (see updateRomaniaMinZoom).
+    zoomSnap: 0.5,
+    maxZoom: MAP_MAX_ZOOM,
   });
 
   L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
@@ -124,6 +127,27 @@ function initMap() {
 
   leafletMap.on('click', onMapClick);
   leafletMap.on('mousemove', onMapMouseMove);
+
+  // Compute the smallest zoom level where the entire Romania bounding box
+  // still fits inside the visible map viewport, then use that as minZoom
+  // so the user can't zoom out further. Recompute whenever the viewport
+  // size changes (window resize, fullscreen toggle, layout change).
+  updateRomaniaMinZoom();
+  window.addEventListener('resize', () => {
+    leafletMap.invalidateSize();
+    updateRomaniaMinZoom();
+  });
+}
+
+function updateRomaniaMinZoom() {
+  if (!leafletMap) return;
+  // getBoundsZoom returns the tightest zoom where Romania still fits. Subtract
+  // half a level so the user can pull back a bit further than the strict fit
+  // — the country stays visible with some breathing room around it.
+  const fitZoom   = leafletMap.getBoundsZoom(ROMANIA_BOUNDS, false);
+  const minAllowed = Math.max(2, fitZoom - 0.5);
+  leafletMap.setMinZoom(minAllowed);
+  if (leafletMap.getZoom() < minAllowed) leafletMap.setZoom(minAllowed);
 }
 
 function exitLandingMode() {
@@ -169,7 +193,7 @@ function resetAll() {
   setMapInstruction(false);
 }
 
-/* ── 1. LOCATION SEARCH → ask for pin drop ─────── */
+/* ── 1. LOCATION SEARCH → draw circle + fetch sources ── */
 async function flyToLocation(lat, lon, name) {
   const wasLanding = document.body.classList.contains('landing');
   resetAll();
@@ -181,34 +205,17 @@ async function flyToLocation(lat, lon, name) {
   // The split-layout grid transitions over ~450ms when leaving landing mode.
   // Flying before the transition settles makes Leaflet compute the centre
   // against the stale full-screen viewport, so the circle ends up offset.
-  // Wait for the layout to settle, then invalidateSize + flyTo so the scan
-  // centre lands in the middle of the visible map.
   const flyDelay = wasLanding ? 480 : 0;
   setTimeout(() => {
     leafletMap.invalidateSize();
-    leafletMap.flyTo([_scanCenter.lat, _scanCenter.lon], 14, { duration: 0.9 });
+    leafletMap.flyTo([_scanCenter.lat, _scanCenter.lon], 12, { duration: 0.9 });
   }, flyDelay);
-
-  appState = 'awaiting-pin';
-  document.getElementById('map').style.cursor = 'crosshair';
-  setMapInstruction(true, `📍 Click anywhere on the map to set your collection point`);
-  renderPinDropPanel(name);
-  document.getElementById('sources-count').textContent = '—';
-  document.getElementById('sources-list').innerHTML =
-    `<div class="bm-empty">Place a collection point on the map to discover water sources.</div>`;
-  document.getElementById('overview-stats').innerHTML = '';
-}
-
-/* ── 1b. PIN DROPPED → draw circle + fetch + analyse ─ */
-async function startAnalysisFromPin(lat, lon) {
-  appState = 'scanning';
-  document.getElementById('map').style.cursor = '';
-  setMapInstruction(false);
 
   drawScanCircle();
   setTimeout(() => setCollectionMarker(lat, lon), 400);
 
-  renderLoadingPanel(`Scanning water sources within ${SCAN_RADIUS_KM} km of ${_currentLocationName}…`);
+  appState = 'scanning';
+  renderLoadingPanel(`Scanning water sources within ${SCAN_RADIUS_KM} km of ${name}…`);
   document.getElementById('sources-count').textContent = 'scanning…';
   document.getElementById('sources-list').innerHTML =
     `<div class="bm-empty">Searching OpenStreetMap and EU-Hydro databases…</div>`;
@@ -217,7 +224,9 @@ async function startAnalysisFromPin(lat, lon) {
   try {
     const data = await H2O.fetchWaterSources(_scanCenter.lat, _scanCenter.lon, SCAN_RADIUS_KM * 1000);
     _sources = data.sources || [];
-    await runFeasibilityAnalysis(lat, lon);
+    addSourceMarkers(_sources);
+    enterPointSelectMode(name, _sources.length, data.eu_hydro_available);
+    renderSourcesPanelRaw(_sources);
   } catch (err) {
     renderErrorPanel(`Could not reach the backend at ${H2O.base}.`,
       `Start it from the project root with:\n    py -m backend.server\n\nDetails: ${err.message}`);
@@ -284,20 +293,12 @@ function isInsideScanCircle(lat, lon) {
 }
 
 function onMapMouseMove(e) {
-  if (appState === 'awaiting-pin') {
-    document.getElementById('map').style.cursor = 'crosshair';
-    return;
-  }
   if (appState !== 'point-select') return;
   const inside = isInsideScanCircle(e.latlng.lat, e.latlng.lng);
   document.getElementById('map').style.cursor = inside ? 'crosshair' : 'not-allowed';
 }
 
 async function onMapClick(e) {
-  if (appState === 'awaiting-pin') {
-    await startAnalysisFromPin(e.latlng.lat, e.latlng.lng);
-    return;
-  }
   if (appState !== 'point-select') return;
   if (!isInsideScanCircle(e.latlng.lat, e.latlng.lng)) return;
   await runFeasibilityAnalysis(e.latlng.lat, e.latlng.lng);
@@ -433,23 +434,6 @@ function renderEmptyResultsPanel(result) {
   document.getElementById('sources-count').textContent = '0 detected';
   document.getElementById('sources-list').innerHTML =
     `<div class="bm-empty">No water sources within ${SCAN_RADIUS_KM} km.</div>`;
-}
-
-function renderPinDropPanel(name) {
-  document.getElementById('detail-panel').innerHTML = `
-    <div class="dp-header">
-      <div>
-        <div class="dp-title">${escapeHtml(name)}</div>
-        <div class="dp-sub">Ready to scan &middot; ${SCAN_RADIUS_KM} km radius</div>
-      </div>
-    </div>
-    <div class="dp-instruction-box">
-      <svg viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5S10.62 6.5 12 6.5s2.5 1.12 2.5 2.5S13.38 11.5 12 11.5z"/></svg>
-      <div>
-        <div class="dp-instr-title">Drop a Collection Point</div>
-        <div class="dp-instr-text">Click anywhere on the map to place your water collection point. The system will then draw a ${SCAN_RADIUS_KM} km scan circle, discover all nearby water sources, and rank the best 15 by feasibility.</div>
-      </div>
-    </div>`;
 }
 
 function renderPointSelectPanel(name, count, euHydroAvailable) {
@@ -620,21 +604,17 @@ function returnToPointSelect() {
   if (!_scanCenter) return;
   if (_collectionMarker) { leafletMap.removeLayer(_collectionMarker); _collectionMarker = null; }
   if (_pipelineLayer)    { leafletMap.removeLayer(_pipelineLayer);    _pipelineLayer = null; }
-  if (_scanCircle)       { leafletMap.removeLayer(_scanCircle);       _scanCircle = null; }
-  if (_scanCenterMarker) { leafletMap.removeLayer(_scanCenterMarker); _scanCenterMarker = null; }
-  Object.values(_sourceMarkers).forEach(m => leafletMap.removeLayer(m));
-  _sourceMarkers = {};
-  _sources = [];
   _rankedSources = [];
   _selectedSourceId = null;
-  appState = 'awaiting-pin';
-  document.getElementById('map').style.cursor = 'crosshair';
-  setMapInstruction(true, `📍 Click anywhere on the map to set your collection point`);
-  renderPinDropPanel(_currentLocationName);
-  document.getElementById('sources-count').textContent = '—';
-  document.getElementById('sources-list').innerHTML =
-    `<div class="bm-empty">Place a collection point on the map to discover water sources.</div>`;
-  document.getElementById('overview-stats').innerHTML = '';
+  // Reset existing source markers back to plain blue
+  Object.values(_sourceMarkers).forEach(m => {
+    m.setIcon(L.divIcon({
+      html: `<div class="src-marker src-marker-blue"></div>`,
+      className: '', iconSize: [12, 12], iconAnchor: [6, 6],
+    }));
+  });
+  enterPointSelectMode(_currentLocationName, _sources.length, true);
+  renderSourcesPanelRaw(_sources);
 }
 
 /* ── BELOW-MAP RENDERING ───────────────────────── */
@@ -937,7 +917,10 @@ function toggleMapExpand() {
     document.body.classList.remove('fs-info-hidden');
   }
 
-  setTimeout(() => leafletMap?.invalidateSize(), 380);
+  setTimeout(() => {
+    leafletMap?.invalidateSize();
+    updateRomaniaMinZoom();
+  }, 380);
 }
 
 document.addEventListener('keydown', e => {
