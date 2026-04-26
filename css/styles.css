@@ -786,9 +786,10 @@ html.dark .leaflet-control-attribution { background: rgba(15,23,42,.88) !importa
 
 /* ── POINT SELECT PANEL ──────────────────────────── */
 .dp-back-btn {
-  flex-shrink: 0; font-size: .72rem; font-weight: 700; color: var(--text-sub);
+  flex-shrink: 0; align-self: center;
+  font-size: .72rem; font-weight: 700; color: var(--text-sub);
   background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
-  padding: 4px 10px; cursor: pointer; font-family: inherit; transition: all .15s; white-space: nowrap;
+  padding: 5px 12px; cursor: pointer; font-family: inherit; transition: all .15s; white-space: nowrap;
 }
 .dp-back-btn:hover { background: var(--border); color: var(--text); }
 

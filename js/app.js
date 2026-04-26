@@ -16,7 +16,7 @@
  *        - pipeline polyline from best source to collection point
  */
 
-const SCAN_RADIUS_KM = 10;
+const SCAN_RADIUS_KM = 7;
 
 const TYPE_LABEL = {
   spring: 'Spring', stream: 'Stream', river: 'River',
@@ -88,8 +88,9 @@ function initMap() {
   leafletMap = L.map('map', {
     center: [46.0, 25.0], zoom: 7, zoomControl: true,
     maxBounds: ROMANIA_BOUNDS, maxBoundsViscosity: 1.0,
-    // minZoom is set dynamically by updateRomaniaMinZoom() so the user can
-    // never zoom out past the point where the whole country fits the map.
+    // Allow half-step zoom so the dynamic minZoom can sit a bit looser than
+    // the exact "country fits viewport" zoom level (see updateRomaniaMinZoom).
+    zoomSnap: 0.5,
     maxZoom: MAP_MAX_ZOOM,
   });
 
@@ -140,11 +141,13 @@ function initMap() {
 
 function updateRomaniaMinZoom() {
   if (!leafletMap) return;
-  // getBoundsZoom returns the max zoom where the bounds fit the current view
-  // — which is exactly the minimum we want to allow when zooming out.
-  const fitZoom = leafletMap.getBoundsZoom(ROMANIA_BOUNDS, false);
-  leafletMap.setMinZoom(fitZoom);
-  if (leafletMap.getZoom() < fitZoom) leafletMap.setZoom(fitZoom);
+  // getBoundsZoom returns the tightest zoom where Romania still fits. Subtract
+  // half a level so the user can pull back a bit further than the strict fit
+  // — the country stays visible with some breathing room around it.
+  const fitZoom   = leafletMap.getBoundsZoom(ROMANIA_BOUNDS, false);
+  const minAllowed = Math.max(2, fitZoom - 0.5);
+  leafletMap.setMinZoom(minAllowed);
+  if (leafletMap.getZoom() < minAllowed) leafletMap.setZoom(minAllowed);
 }
 
 function exitLandingMode() {
@@ -190,7 +193,7 @@ function resetAll() {
   setMapInstruction(false);
 }
 
-/* ── 1. LOCATION SEARCH → ask for pin drop ─────── */
+/* ── 1. LOCATION SEARCH → draw circle + fetch sources ── */
 async function flyToLocation(lat, lon, name) {
   const wasLanding = document.body.classList.contains('landing');
   resetAll();
@@ -202,8 +205,6 @@ async function flyToLocation(lat, lon, name) {
   // The split-layout grid transitions over ~450ms when leaving landing mode.
   // Flying before the transition settles makes Leaflet compute the centre
   // against the stale full-screen viewport, so the circle ends up offset.
-  // Wait for the layout to settle, then invalidateSize + flyTo so the scan
-  // centre lands in the middle of the visible map.
   const flyDelay = wasLanding ? 480 : 0;
   setTimeout(() => {
     leafletMap.invalidateSize();
@@ -211,26 +212,10 @@ async function flyToLocation(lat, lon, name) {
     leafletMap.flyTo([_scanCenter.lat, _scanCenter.lon], 12, { duration: 0.9 });
   }, flyDelay);
 
-  appState = 'awaiting-pin';
-  document.getElementById('map').style.cursor = 'crosshair';
-  setMapInstruction(true, `📍 Click anywhere on the map to set your collection point`);
-  renderPinDropPanel(name);
-  document.getElementById('sources-count').textContent = '—';
-  document.getElementById('sources-list').innerHTML =
-    `<div class="bm-empty">Place a collection point on the map to discover water sources.</div>`;
-  document.getElementById('overview-stats').innerHTML = '';
-}
-
-/* ── 1b. PIN DROPPED → draw circle + fetch + analyse ─ */
-async function startAnalysisFromPin(lat, lon) {
-  appState = 'scanning';
-  document.getElementById('map').style.cursor = '';
-  setMapInstruction(false);
-
   drawScanCircle();
-  drawScanCenterMarker();
 
-  renderLoadingPanel(`Scanning water sources within ${SCAN_RADIUS_KM} km of ${_currentLocationName}…`);
+  appState = 'scanning';
+  renderLoadingPanel(`Scanning water sources within ${SCAN_RADIUS_KM} km of ${name}…`);
   document.getElementById('sources-count').textContent = 'scanning…';
   document.getElementById('sources-list').innerHTML =
     `<div class="bm-empty">Searching OpenStreetMap and EU-Hydro databases…</div>`;
@@ -240,7 +225,8 @@ async function startAnalysisFromPin(lat, lon) {
     const data = await H2O.fetchWaterSources(_scanCenter.lat, _scanCenter.lon, SCAN_RADIUS_KM * 1000);
     _sources = data.sources || [];
     addSourceMarkers(_sources);
-    await runFeasibilityAnalysis(lat, lon);
+    enterPointSelectMode(name, _sources.length, data.eu_hydro_available);
+    renderSourcesPanelRaw(_sources);
   } catch (err) {
     renderErrorPanel(`Could not reach the backend at ${H2O.base}.`,
       `Start it from the project root with:\n    py -m backend.server\n\nDetails: ${err.message}`);
@@ -307,20 +293,12 @@ function isInsideScanCircle(lat, lon) {
 }
 
 function onMapMouseMove(e) {
-  if (appState === 'awaiting-pin') {
-    document.getElementById('map').style.cursor = 'crosshair';
-    return;
-  }
   if (appState !== 'point-select') return;
   const inside = isInsideScanCircle(e.latlng.lat, e.latlng.lng);
   document.getElementById('map').style.cursor = inside ? 'crosshair' : 'not-allowed';
 }
 
 async function onMapClick(e) {
-  if (appState === 'awaiting-pin') {
-    await startAnalysisFromPin(e.latlng.lat, e.latlng.lng);
-    return;
-  }
   if (appState !== 'point-select') return;
   if (!isInsideScanCircle(e.latlng.lat, e.latlng.lng)) return;
   await runFeasibilityAnalysis(e.latlng.lat, e.latlng.lng);
@@ -352,12 +330,8 @@ async function runFeasibilityAnalysis(lat, lon) {
       return;
     }
 
-    // Add markers for any sources returned by analysis that aren't already on the map
-    // (analysis may discover slightly different sources around the collection point)
-    const alreadyShown = new Set(Object.keys(_sourceMarkers));
-    const newSources = _rankedSources.filter(s => !alreadyShown.has(String(s.id)));
-    if (newSources.length > 0) addSourceMarkers([..._sources, ...newSources]);
-
+    // Place markers only for ranked sources, already colored by feasibility
+    addSourceMarkers(_rankedSources);
     recolorSourceMarkersByFeasibility(_rankedSources);
 
     const best = _rankedSources[0];
@@ -461,23 +435,6 @@ function renderEmptyResultsPanel(result) {
   document.getElementById('sources-count').textContent = '0 detected';
   document.getElementById('sources-list').innerHTML =
     `<div class="bm-empty">No water sources within ${SCAN_RADIUS_KM} km.</div>`;
-}
-
-function renderPinDropPanel(name) {
-  document.getElementById('detail-panel').innerHTML = `
-    <div class="dp-header">
-      <div>
-        <div class="dp-title">${escapeHtml(name)}</div>
-        <div class="dp-sub">Ready to scan &middot; ${SCAN_RADIUS_KM} km radius</div>
-      </div>
-    </div>
-    <div class="dp-instruction-box">
-      <svg viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5S10.62 6.5 12 6.5s2.5 1.12 2.5 2.5S13.38 11.5 12 11.5z"/></svg>
-      <div>
-        <div class="dp-instr-title">Drop a Collection Point</div>
-        <div class="dp-instr-text">Click anywhere on the map to place your water collection point. The system will then draw a ${SCAN_RADIUS_KM} km scan circle, discover all nearby water sources, and rank the best 15 by feasibility.</div>
-      </div>
-    </div>`;
 }
 
 function renderPointSelectPanel(name, count, euHydroAvailable) {
@@ -634,21 +591,17 @@ function returnToPointSelect() {
   if (!_scanCenter) return;
   if (_collectionMarker) { leafletMap.removeLayer(_collectionMarker); _collectionMarker = null; }
   if (_pipelineLayer)    { leafletMap.removeLayer(_pipelineLayer);    _pipelineLayer = null; }
-  if (_scanCircle)       { leafletMap.removeLayer(_scanCircle);       _scanCircle = null; }
-  if (_scanCenterMarker) { leafletMap.removeLayer(_scanCenterMarker); _scanCenterMarker = null; }
-  Object.values(_sourceMarkers).forEach(m => leafletMap.removeLayer(m));
-  _sourceMarkers = {};
-  _sources = [];
   _rankedSources = [];
   _selectedSourceId = null;
-  appState = 'awaiting-pin';
-  document.getElementById('map').style.cursor = 'crosshair';
-  setMapInstruction(true, `📍 Click anywhere on the map to set your collection point`);
-  renderPinDropPanel(_currentLocationName);
-  document.getElementById('sources-count').textContent = '—';
-  document.getElementById('sources-list').innerHTML =
-    `<div class="bm-empty">Place a collection point on the map to discover water sources.</div>`;
-  document.getElementById('overview-stats').innerHTML = '';
+  // Reset existing source markers back to plain blue
+  Object.values(_sourceMarkers).forEach(m => {
+    m.setIcon(L.divIcon({
+      html: `<div class="src-marker src-marker-blue"></div>`,
+      className: '', iconSize: [12, 12], iconAnchor: [6, 6],
+    }));
+  });
+  enterPointSelectMode(_currentLocationName, _sources.length, true);
+  renderSourcesPanelRaw(_sources);
 }
 
 /* ── BELOW-MAP RENDERING ───────────────────────── */
