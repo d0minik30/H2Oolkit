@@ -16,7 +16,7 @@
   --red-dim:    rgba(220,38,38,.08);
   --text:       #0f172a;
   --text-sub:   #334155;
-  --text-muted: #94a3b8;
+  --text-muted: #64748b;
   --sh-sm: 0 1px 3px rgba(15,23,42,.06), 0 1px 2px rgba(15,23,42,.04);
   --sh-md: 0 4px 12px rgba(15,23,42,.08), 0 2px 4px rgba(15,23,42,.05);
   --sh-lg: 0 10px 28px rgba(15,23,42,.1), 0 4px 8px rgba(15,23,42,.06);
@@ -267,7 +267,7 @@ body.fs-info-hidden .fs-info-dock-toggle svg { transform: rotate(180deg); }
 .sbadge-verified      { background: var(--accent-dim); color: var(--accent); border: 1px solid rgba(37,99,235,.2); }
 .sbadge-high_priority { background: var(--red-dim); color: var(--red); border: 1px solid rgba(220,38,38,.2); }
 .sbadge-pending       { background: var(--orange-dim); color: var(--orange); border: 1px solid rgba(180,83,9,.2); }
-.sbadge-linked        { background: rgba(100,116,139,.08); color: #475569; border: 1px solid rgba(100,116,139,.2); font-family: 'Courier New', monospace; font-size: .68rem; }
+.sbadge-linked        { background: rgba(100,116,139,.08); color: var(--text-sub); border: 1px solid rgba(100,116,139,.2); font-family: 'Courier New', monospace; font-size: .68rem; }
 
 /* gauge */
 .gauge-box { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 11px 13px; }
@@ -701,7 +701,7 @@ body:not(.landing) .mos-hero { display: none; }
 .dark-toggle svg { width:15px; height:15px; color:var(--text-sub); }
 html:not(.dark) .icon-moon { display:none; }
 html.dark .icon-sun { display:none; }
-html.dark { --bg:#0f172a; --card:#1e293b; --border:#334155; --border-2:#475569; --text:#f1f5f9; --text-sub:#cbd5e1; --text-muted:#64748b; --sh-sm:0 1px 3px rgba(0,0,0,.3); --sh-md:0 4px 12px rgba(0,0,0,.4); --sh-lg:0 10px 28px rgba(0,0,0,.5); }
+html.dark { --bg:#0f172a; --card:#1e293b; --border:#334155; --border-2:#475569; --text:#f1f5f9; --text-sub:#e2e8f0; --text-muted:#94a3b8; --sh-sm:0 1px 3px rgba(0,0,0,.3); --sh-md:0 4px 12px rgba(0,0,0,.4); --sh-lg:0 10px 28px rgba(0,0,0,.5); }
 html.dark .mos-input { background: rgba(30,41,59,.97); border-color: rgba(255,255,255,.15); color: var(--text); }
 html.dark .mos-results { background: var(--card); }
 html.dark .mos-item:hover { background: var(--border); }
@@ -1320,7 +1320,7 @@ body.landing .landing-wave { opacity: 1; }
   vertical-align: middle;
 }
 .dp-eu-ok  { background: rgba(22, 163, 74, .12); color: #16a34a; }
-.dp-eu-off { background: rgba(120, 113, 108, .15); color: #78716c; }
+.dp-eu-off { background: rgba(120, 113, 108, .15); color: var(--text-sub); }
 
 .dp-section { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--border); }
 .dp-section-label {

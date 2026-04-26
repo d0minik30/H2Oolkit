@@ -80,17 +80,23 @@ let _currentLocationName = '';
 
 /* ── MAP ───────────────────────────────────────── */
 function initMap() {
+  // Esri's World_Imagery tile pyramid stops having usable imagery for rural
+  // Romania around z=17 — anything past that returns the placeholder
+  // "Map data not yet available." Cap the map there.
+  const MAP_MAX_ZOOM = 17;
+
   leafletMap = L.map('map', {
     center: [46.0, 25.0], zoom: 7, zoomControl: true,
-    maxBounds: ROMANIA_BOUNDS, maxBoundsViscosity: 1.0, minZoom: 6,
+    maxBounds: ROMANIA_BOUNDS, maxBoundsViscosity: 1.0,
+    minZoom: 6, maxZoom: MAP_MAX_ZOOM,
   });
 
   L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-    attribution: 'Imagery &copy; Esri', maxZoom: 19,
+    attribution: 'Imagery &copy; Esri', maxZoom: MAP_MAX_ZOOM,
   }).addTo(leafletMap);
 
   L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
-    attribution: '', maxZoom: 19, opacity: 0.85,
+    attribution: '', maxZoom: MAP_MAX_ZOOM, opacity: 0.85,
   }).addTo(leafletMap);
 
   const legend = L.control({ position: 'bottomleft' });
@@ -130,7 +136,9 @@ function exitLandingMode() {
   leafletMap.boxZoom.enable();
   leafletMap.keyboard.enable();
   leafletMap.zoomControl.getContainer().style.display = '';
-  setTimeout(() => leafletMap.invalidateSize(), 50);
+  // Don't invalidate here — the caller does it after the layout transition
+  // settles so flyTo() centers on the post-transition viewport, not the
+  // stale full-screen landing dimensions.
 }
 
 function setMapInstruction(show, text = '') {
@@ -163,12 +171,23 @@ function resetAll() {
 
 /* ── 1. LOCATION SEARCH → fetch sources ────────── */
 async function flyToLocation(lat, lon, name) {
+  const wasLanding = document.body.classList.contains('landing');
   resetAll();
   _currentLocationName = name;
   _scanCenter = { lat: parseFloat(lat), lon: parseFloat(lon) };
 
   exitLandingMode();
-  leafletMap.flyTo([_scanCenter.lat, _scanCenter.lon], 12, { duration: 1.0 });
+
+  // The split-layout grid transitions over ~450ms when leaving landing mode.
+  // Flying before the transition settles makes Leaflet compute the centre
+  // against the stale full-screen viewport, so the circle ends up offset.
+  // Wait for the layout to settle, then invalidateSize + flyTo so the scan
+  // centre lands in the middle of the visible map.
+  const flyDelay = wasLanding ? 480 : 0;
+  setTimeout(() => {
+    leafletMap.invalidateSize();
+    leafletMap.flyTo([_scanCenter.lat, _scanCenter.lon], 12, { duration: 0.9 });
+  }, flyDelay);
 
   drawScanCircle();
   drawScanCenterMarker();
@@ -497,7 +516,7 @@ function renderDetailPanel(src) {
           stroke-dasharray="${dash.toFixed(2)} ${(circ - dash).toFixed(2)}" stroke-linecap="round"
           transform="rotate(-90 ${CX} ${CY})"/>
         <text x="${CX}" y="${CY - 7}" text-anchor="middle" fill="${cc}" font-size="26" font-weight="800" font-family="Outfit,sans-serif">${Math.round(fs)}</text>
-        <text x="${CX}" y="${CY + 13}" text-anchor="middle" fill="#94a3b8" font-size="11" font-family="Outfit,sans-serif">${lbl}</text>
+        <text x="${CX}" y="${CY + 13}" text-anchor="middle" fill="currentColor" opacity="0.7" font-size="11" font-family="Outfit,sans-serif">${lbl}</text>
       </svg>
       <div class="dp-feas-label">Feasibility Score</div>
     </div>
