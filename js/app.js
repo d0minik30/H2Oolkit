@@ -689,12 +689,112 @@ function renderDetailPanel(src) {
       </div>
     </div>
 
-    ${src.recommendation ? `
     <div class="dp-section">
       <div class="dp-section-label">Recommendation</div>
-      <div class="dp-recommendation">${escapeHtml(src.recommendation)}</div>
-    </div>` : ''}
+      ${renderRecommendationCard(src)}
+    </div>
   `;
+}
+
+const REC_ICONS = {
+  check:   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`,
+  warn:    `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
+  cross:   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`,
+  leaf:    `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 8C8 10 5.9 16.17 3.82 21.34l1.89.66.95-2.3c.48.17.98.3 1.34.3C19 20 22 3 22 3c-1 2-8 2.25-13 3.25S2 11.5 2 13.5s1.75 3.75 1.75 3.75C7 8 17 8 17 8z"/></svg>`,
+  route:   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="19" r="3"/><circle cx="18" cy="5" r="3"/><path d="M6.7 17.3 9 12l3 5 3-7 2.5 4"/></svg>`,
+  pump:    `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2"/></svg>`,
+  drop:    `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2c-5.33 4.55-8 8.48-8 11.8 0 4.98 3.8 8.2 8 8.2s8-3.22 8-8.2C20 10.48 17.33 6.55 12 2z"/></svg>`,
+  link:    `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>`,
+};
+
+function recVerdict(score) {
+  if (score >= 80) return { tone: 'good', title: 'Strongly Recommended',  icon: 'check' };
+  if (score >= 60) return { tone: 'okay', title: 'Recommended',           icon: 'check' };
+  if (score >= 40) return { tone: 'mid',  title: 'Proceed with Caution',  icon: 'warn'  };
+  if (score >= 20) return { tone: 'low',  title: 'Not Ideal',             icon: 'warn'  };
+  return                  { tone: 'bad',  title: 'Not Recommended',       icon: 'cross' };
+}
+
+function buildRecPoints(src) {
+  const points = [];
+  const cost  = src.cost  || {};
+  const route = src.route || {};
+
+  // Gravity vs pumping — biggest cost-of-operation signal
+  if (cost.needs_pumping) {
+    const lift = Math.abs(cost.elevation_diff_m ?? route.elevation_difference_m ?? 0);
+    points.push({
+      tone: 'warn', icon: 'pump',
+      html: `<strong>Pumping required</strong> &middot; ${Math.round(lift)} m vertical lift`,
+    });
+  } else {
+    points.push({
+      tone: 'good', icon: 'leaf',
+      html: `<strong>Gravity-fed</strong> &middot; no pumps, low operating cost`,
+    });
+  }
+
+  // Pipeline distance — short = good, long = a flag
+  const distKm = route.terrain_adjusted_distance_km ?? (src.distance_m ? src.distance_m / 1000 : null);
+  if (distKm != null) {
+    const tone = distKm < 2 ? 'good' : distKm < 5 ? 'neutral' : 'warn';
+    points.push({
+      tone, icon: 'route',
+      html: `<strong>${distKm.toFixed(2)} km</strong> pipeline route`,
+    });
+  }
+
+  // Demand coverage
+  const cov = cost.supply_covers_demand_pct;
+  if (cov != null) {
+    if (cov >= 100) {
+      points.push({
+        tone: 'good', icon: 'drop',
+        html: `<strong>Fully meets</strong> daily demand`,
+      });
+    } else {
+      points.push({
+        tone: 'warn', icon: 'drop',
+        html: `Covers <strong>${cov}%</strong> of demand &middot; supplemental source needed`,
+      });
+    }
+  }
+
+  // EU-Hydro verification — confidence signal
+  if (src.eu_hydro_linked === true) {
+    points.push({
+      tone: 'good', icon: 'link',
+      html: `Verified in <strong>EU-Hydro</strong> dataset`,
+    });
+  }
+
+  return points;
+}
+
+function renderRecommendationCard(src) {
+  const fs = src.feasibility_score ?? 0;
+  const v  = recVerdict(fs);
+  const points = buildRecPoints(src);
+
+  const pointsHtml = points.map(p => `
+    <div class="dp-rec-point dp-rec-point-${p.tone}">
+      <div class="dp-rec-point-icon">${REC_ICONS[p.icon] ?? REC_ICONS.check}</div>
+      <div class="dp-rec-point-text">${p.html}</div>
+    </div>
+  `).join('');
+
+  return `
+    <div class="dp-rec-card dp-rec-card-${v.tone}">
+      <div class="dp-rec-header">
+        <div class="dp-rec-icon">${REC_ICONS[v.icon]}</div>
+        <div class="dp-rec-verdict">
+          <div class="dp-rec-verdict-title">${v.title}</div>
+          <div class="dp-rec-verdict-sub">Feasibility ${Math.round(fs)} / 100 &middot; ${feasLabel(fs)}</div>
+        </div>
+        <div class="dp-rec-score">${Math.round(fs)}</div>
+      </div>
+      ${points.length ? `<div class="dp-rec-points">${pointsHtml}</div>` : ''}
+    </div>`;
 }
 
 function returnToPointSelect() {
@@ -787,6 +887,34 @@ function renderOverviewStats(result, ranked) {
   const fc = feasColor(avgFs);
   const bestCol = feasColor(best.feasibility_score ?? 0);
 
+  // Avg-feasibility donut geometry (matches dp-feas-svg style)
+  const R = 52, CX = 70, CY = 70, circ = 2 * Math.PI * R;
+  const dash = (avgFs / 100) * circ;
+
+  // Cap visual fill at 1500 mm (Carpathian peaks reach ~1400 mm). Clamp 28–92 %
+  // so the "value on water" label always has space to render inside the fill.
+  const PRECIP_MAX_MM = 1500;
+  const precipMm = Math.round(weather.mean_annual_precipitation_mm ?? 0);
+  const precipPct = Math.max(28, Math.min(92, (precipMm / PRECIP_MAX_MM) * 100));
+
+  // SVG viewBox is exactly the visible tap (80×50). The spout opening sits at
+  // (40, 46), so .ov-tap-stream / .ov-tap-drop top:48px line up with the hole.
+  const tapSvg = `
+    <svg class="ov-tap-svg" viewBox="0 0 80 50" aria-hidden="true">
+      <rect x="32" y="0"  width="16" height="5"  rx="1.5" fill="#475569"/>
+      <rect x="36" y="5"  width="8"  height="5"  fill="#64748b"/>
+      <rect x="20" y="10" width="40" height="16" rx="3" fill="#94a3b8"/>
+      <rect x="22" y="12" width="36" height="3"  rx="1" fill="rgba(255,255,255,.45)"/>
+      <path d="M32 26 L32 42 Q32 46 36 46 L44 46 Q48 46 48 42 L48 26 Z" fill="#94a3b8"/>
+      <rect x="33" y="28" width="2"  height="14" fill="rgba(255,255,255,.35)"/>
+      <ellipse cx="40" cy="46" rx="6.5" ry="2"   fill="#334155"/>
+      <ellipse cx="40" cy="46" rx="4"   ry="1.2" fill="#0f172a"/>
+    </svg>`;
+
+  const wavePath = 'M0 4 Q25 0 50 4 T100 4 T150 4 T200 4 V8 H0 Z';
+
+  const tickPositions = [20, 40, 60, 80];
+
   document.getElementById('overview-stats').innerHTML = `
     <div class="ov-best-card">
       <div class="ov-best-eyebrow">Best Option (rank #1)</div>
@@ -799,49 +927,71 @@ function renderOverviewStats(result, ranked) {
       </div>
     </div>
 
-    <div class="ov-stat-list">
-      <div class="ov-stat-row">
-        <div class="ov-stat-icon" style="background:rgba(22,163,74,.1)">
-          <svg viewBox="0 0 24 24" fill="#16a34a"><path d="M12 2c-5.33 4.55-8 8.48-8 11.8 0 4.98 3.8 8.2 8 8.2s8-3.22 8-8.2C20 10.48 17.33 6.55 12 2z"/></svg>
+    <div class="ov-metrics-grid">
+      <div class="ov-metric-card">
+        <div class="ov-metric-label">Average Feasibility</div>
+        <div class="ov-metric-stage">
+          <svg class="ov-feas-svg" viewBox="0 0 140 140">
+            <circle cx="${CX}" cy="${CY}" r="${R}" fill="none" stroke="var(--border)" stroke-width="11"/>
+            <circle cx="${CX}" cy="${CY}" r="${R}" fill="none" stroke="${fc}" stroke-width="11"
+              stroke-dasharray="${dash.toFixed(2)} ${(circ - dash).toFixed(2)}" stroke-linecap="round"
+              transform="rotate(-90 ${CX} ${CY})"/>
+            <text x="${CX}" y="${CY - 2}" text-anchor="middle" fill="${fc}"
+              font-size="28" font-weight="800" font-family="Outfit,sans-serif">${avgFs}</text>
+            <text x="${CX}" y="${CY + 17}" text-anchor="middle" fill="currentColor" opacity="0.55"
+              font-size="10" font-family="Outfit,sans-serif">/ 100</text>
+          </svg>
         </div>
-        <div class="ov-stat-body">
-          <div class="ov-stat-label">Average Feasibility</div>
-          <div class="ov-stat-bar-row">
-            <div class="ov-stat-bar-track">
-              <div class="ov-stat-bar-fill" style="width:${avgFs}%;background:${fc}"></div>
-            </div>
-            <div class="ov-stat-val" style="color:${fc}">${avgFs}</div>
+      </div>
+
+      <div class="ov-metric-card">
+        <div class="ov-metric-label">Total Daily Flow</div>
+        <div class="ov-metric-stage">
+          <div class="ov-tap-stage">
+            ${tapSvg}
+            <div class="ov-tap-stream"></div>
+            <div class="ov-tap-drop"></div>
+            <div class="ov-tap-puddle"></div>
           </div>
+          <div class="ov-tap-value">${fmtNum(totalFlowM3)}<span>m³/d</span></div>
         </div>
       </div>
 
-      <div class="ov-stat-row">
-        <div class="ov-stat-icon" style="background:rgba(8,145,178,.1)">
-          <svg viewBox="0 0 24 24" fill="#0891b2"><path d="M12 2c-5.33 4.55-8 8.48-8 11.8 0 4.98 3.8 8.2 8 8.2s8-3.22 8-8.2C20 10.48 17.33 6.55 12 2z"/></svg>
-        </div>
-        <div class="ov-stat-body">
-          <div class="ov-stat-label">Total Estimated Daily Flow</div>
-          <div class="ov-stat-number">${fmtNum(totalFlowM3)} <span>m³/day across all sources</span></div>
-        </div>
-      </div>
-
-      <div class="ov-stat-row">
-        <div class="ov-stat-icon" style="background:rgba(180,83,9,.1)">
-          <svg viewBox="0 0 24 24" fill="#b45309"><path d="M12 2L2 7l10 5 10-5-10-5z"/></svg>
-        </div>
-        <div class="ov-stat-body">
-          <div class="ov-stat-label">Annual Precipitation (10y avg)</div>
-          <div class="ov-stat-number">${fmtNum(weather.mean_annual_precipitation_mm ?? 0)} <span>mm/year</span></div>
+      <div class="ov-metric-card">
+        <div class="ov-metric-label">Annual Precipitation (10y avg)</div>
+        <div class="ov-metric-stage">
+          <div class="ov-gauge-stage">
+            <div class="ov-gauge-cylinder">
+              <div class="ov-gauge-fill" style="height:${precipPct}%">
+                <svg class="ov-gauge-wave ov-gauge-wave-back" viewBox="0 0 200 8" preserveAspectRatio="none" aria-hidden="true">
+                  <path d="${wavePath}"/>
+                </svg>
+                <svg class="ov-gauge-wave ov-gauge-wave-front" viewBox="0 0 200 6" preserveAspectRatio="none" aria-hidden="true">
+                  <path d="M0 3 Q25 0 50 3 T100 3 T150 3 T200 3 V6 H0 Z"/>
+                </svg>
+                <div class="ov-gauge-value">${fmtNum(precipMm)}<span>mm</span></div>
+              </div>
+              <div class="ov-gauge-marks">
+                ${tickPositions.map(p =>
+                  `<div class="ov-gauge-tick ${(p === 40 || p === 80) ? 'lg' : ''}" style="bottom:${p}%"></div>`
+                ).join('')}
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
 
-    <div class="ov-type-row">
+    <div class="ov-type-grid">
       ${Object.entries(typeCount).map(([type, count]) => {
         const col = TYPE_COLOR[type] ?? '#2563eb';
-        return `<div class="ov-type-chip" style="border-color:${col}30;background:${col}10;color:${col}">
-          ${TYPE_ICON[type] ?? TYPE_ICON.spring}
-          ${count} ${TYPE_LABEL[type] ?? type}${count > 1 ? 's' : ''}
+        const label = (TYPE_LABEL[type] ?? type) + (count > 1 ? 's' : '');
+        return `<div class="ov-type-card" style="border-left-color:${col}">
+          <div class="ov-type-card-icon" style="background:${col}18;color:${col}">${TYPE_ICON[type] ?? TYPE_ICON.spring}</div>
+          <div class="ov-type-card-body">
+            <div class="ov-type-card-num">${count}</div>
+            <div class="ov-type-card-label">${label}</div>
+          </div>
         </div>`;
       }).join('')}
     </div>`;
