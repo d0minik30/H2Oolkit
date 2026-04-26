@@ -209,8 +209,9 @@ async function flyToLocation(lat, lon, name) {
   }, flyDelay);
 
   appState = 'awaiting-pin';
+  drawScanCircle();
   document.getElementById('map').style.cursor = 'crosshair';
-  setMapInstruction(true, `📍 Click anywhere on the map to set your collection point`);
+  setMapInstruction(true, `📍 Click inside the blue circle — within ${SCAN_RADIUS_KM} km of ${name} — to set your collection point`);
   renderPinDropPanel(name);
   document.getElementById('sources-count').textContent = '—';
   document.getElementById('sources-list').innerHTML =
@@ -224,7 +225,7 @@ async function startAnalysisFromPin(lat, lon) {
   document.getElementById('map').style.cursor = '';
   setMapInstruction(false);
 
-  drawScanCircle();
+  if (!_scanCircle) drawScanCircle();
   setTimeout(() => setCollectionMarker(lat, lon), 400);
 
   renderLoadingPanel(`Scanning water sources within ${SCAN_RADIUS_KM} km of ${_currentLocationName}…`);
@@ -303,17 +304,14 @@ function isInsideScanCircle(lat, lon) {
 }
 
 function onMapMouseMove(e) {
-  if (appState === 'awaiting-pin') {
-    document.getElementById('map').style.cursor = 'crosshair';
-    return;
-  }
-  if (appState !== 'point-select') return;
+  if (appState !== 'awaiting-pin' && appState !== 'point-select') return;
   const inside = isInsideScanCircle(e.latlng.lat, e.latlng.lng);
   document.getElementById('map').style.cursor = inside ? 'crosshair' : 'not-allowed';
 }
 
 async function onMapClick(e) {
   if (appState === 'awaiting-pin') {
+    if (!isInsideScanCircle(e.latlng.lat, e.latlng.lng)) return;
     await startAnalysisFromPin(e.latlng.lat, e.latlng.lng);
     return;
   }
@@ -511,7 +509,7 @@ function renderPinDropPanel(name) {
       <svg viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5S10.62 6.5 12 6.5s2.5 1.12 2.5 2.5S13.38 11.5 12 11.5z"/></svg>
       <div>
         <div class="dp-instr-title">Drop a Collection Point</div>
-        <div class="dp-instr-text">Click anywhere on the map to place your water collection point. The system will then draw a ${SCAN_RADIUS_KM} km scan circle, discover all nearby water sources, and rank the best 15 by feasibility.</div>
+        <div class="dp-instr-text">Click inside the blue circle — within ${SCAN_RADIUS_KM} km of your searched location — to place your water collection point. The cursor turns into a crosshair when you're in range; clicks outside the circle are ignored. The system will then discover all nearby water sources and rank the best 15 by feasibility.</div>
       </div>
     </div>`;
 }
@@ -639,7 +637,6 @@ function returnToPointSelect() {
   if (!_scanCenter) return;
   if (_collectionMarker) { leafletMap.removeLayer(_collectionMarker); _collectionMarker = null; }
   if (_pipelineLayer)    { leafletMap.removeLayer(_pipelineLayer);    _pipelineLayer = null; }
-  if (_scanCircle)       { leafletMap.removeLayer(_scanCircle);       _scanCircle = null; }
   if (_scanCenterMarker) { leafletMap.removeLayer(_scanCenterMarker); _scanCenterMarker = null; }
   Object.values(_sourceMarkers).forEach(m => leafletMap.removeLayer(m));
   _sourceMarkers = {};
@@ -647,8 +644,9 @@ function returnToPointSelect() {
   _rankedSources = [];
   _selectedSourceId = null;
   appState = 'awaiting-pin';
+  if (!_scanCircle) drawScanCircle();
   document.getElementById('map').style.cursor = 'crosshair';
-  setMapInstruction(true, `📍 Click anywhere on the map to set your collection point`);
+  setMapInstruction(true, `📍 Click inside the blue circle — within ${SCAN_RADIUS_KM} km of ${_currentLocationName} — to set your collection point`);
   renderPinDropPanel(_currentLocationName);
   document.getElementById('sources-count').textContent = '—';
   document.getElementById('sources-list').innerHTML =
