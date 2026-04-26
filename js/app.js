@@ -1111,12 +1111,12 @@ async function downloadReport() {
       }
 
       // Score pill — always blue background, score number colour-coded inside
-      const scoreW = 22;
+      const scoreW = 15;
       doc.setFillColor(...C.blue);
       doc.roundedRect(PAGE_W - M - scoreW - 2, y + 5, scoreW, 11, 2, 2, 'F');
       doc.setTextColor(...C.white);
       doc.setFont(F, 'bold'); doc.setFontSize(11);
-      doc.text(`${Math.round(fs)}`, PAGE_W - M - scoreW / 2 - 2 + 3, y + 12.5, { align: 'center' });
+      doc.text(`${Math.round(fs)}`, PAGE_W - M - 11, y + 12.5, { align: 'center' });
       doc.setFontSize(6.5);
       doc.text('/100', PAGE_W - M - 4, y + 12.5, { align: 'right' });
 
