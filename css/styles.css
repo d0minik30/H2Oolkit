@@ -1024,7 +1024,7 @@ html.dark .leaflet-control-attribution { background: rgba(15,23,42,.88) !importa
   flex-direction: column;
 }
 .bm-card-header {
-  display: flex; align-items: center; justify-content: space-between;
+  display: flex; align-items: center; justify-content: flex-start;
   margin-bottom: 14px; gap: 10px; flex-shrink: 0;
 }
 .bm-card-title {

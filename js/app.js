@@ -59,9 +59,11 @@ function fmtNum(n)  { return Math.round(n).toLocaleString('de-DE'); }
 // rankIndex is 0-based position in the ranked list (optional).
 function srcLabel(src, rankIndex) {
   const raw = (src.name || '').trim();
-  if (raw && raw !== '—') return raw;
+  const isUnnamed = !raw || raw === '—' || /^unnamed\b/i.test(raw);
+  if (!isUnnamed) return raw;
   const type = TYPE_LABEL[src.source_type] ?? 'Source';
-  return `Unnamed ${type}`;
+  const num  = src.feasibility_rank ?? (rankIndex != null ? rankIndex + 1 : null);
+  return num != null ? `Unnamed ${type} #${num}` : `Unnamed ${type}`;
 }
 
 function haversineKm(lat1, lon1, lat2, lon2) {
@@ -592,7 +594,7 @@ function renderPinDropPanel(name) {
 }
 
 function renderDetailPanel(src) {
-  document.querySelectorAll('.src-card').forEach(c => c.classList.remove('src-card-active'));
+  document.querySelectorAll('.src-card, .bm-src-row').forEach(c => c.classList.remove('src-card-active'));
   document.getElementById(`srcc-${src.id}`)?.classList.add('src-card-active');
 
   const fs   = src.feasibility_score ?? 0;
