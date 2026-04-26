@@ -164,6 +164,13 @@ body.map-fullscreen .map-body { height: 100vh; }
 /* Push Leaflet zoom + attribution controls clear of the floating header bar */
 body.map-fullscreen .leaflet-top.leaflet-left { top: 78px; }
 
+/* Keep search bar visible and below the floating header in fullscreen */
+body.map-fullscreen .map-overlay-search {
+  top: 76px;
+  z-index: 1700;
+}
+body.map-fullscreen:not(.landing) .map-overlay-search { width: 320px; }
+
 /* Floating info dock — bottom right (detail panel = main card) */
 body.map-fullscreen .detail-panel {
   position: fixed;

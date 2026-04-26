@@ -33,7 +33,7 @@
     </div>
   </div>
   <div class="navbar-right">
-    <div class="nav-scan-badge"><span class="scan-dot"></span>25 Apr 2026</div>
+    <div class="nav-scan-badge" id="nav-scan-badge"><span class="scan-dot"></span></div>
     <button class="dark-toggle" onclick="toggleDark()" title="Toggle dark mode" aria-label="Toggle dark mode">
       <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
@@ -240,6 +240,8 @@
 </footer>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 <script src="js/api-client.js"></script>
 <script src="js/app.js"></script>
 <script>
@@ -247,6 +249,17 @@
     const isDark = document.documentElement.classList.toggle('dark');
     localStorage.setItem('theme', isDark ? 'dark' : 'light');
   }
+
+  (function() {
+    const badge = document.getElementById('nav-scan-badge');
+    if (!badge) return;
+    const dot = badge.querySelector('.scan-dot');
+    const d = new Date();
+    const label = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+    badge.textContent = '';
+    if (dot) badge.appendChild(dot);
+    badge.appendChild(document.createTextNode(label));
+  })();
 </script>
 </body>
 </html>

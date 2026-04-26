@@ -73,6 +73,7 @@ let _scanCenterMarker = null;
 let _sourceMarkers = {};   // id → L.marker
 let _sources = [];         // raw backend sources for current scan
 let _rankedSources = [];   // backend analysis result (with feasibility_score)
+let _lastAnalysisResult = null; // full result from analyzeSite, for PDF export
 let _selectedSourceId = null;
 let _collectionMarker = null;
 let _pipelineLayer = null;
@@ -282,8 +283,7 @@ function addSourceMarkers(sources) {
     m.on('click', e => {
       L.DomEvent.stopPropagation(e);
       if (appState === 'analyzed') {
-        selectSourceById(String(src.id));
-        leafletMap.setView([src.lat, src.lon], Math.min(leafletMap.getZoom() + 1, 14), { animate: true });
+        selectSourceById(String(src.id), { pan: true });
       }
     });
     _sourceMarkers[String(src.id)] = m;
@@ -348,6 +348,7 @@ async function runFeasibilityAnalysis(lat, lon) {
     });
 
     _rankedSources = filterVisibleSources(result.ranked_sources || []);
+    _lastAnalysisResult = result;
     appState = 'analyzed';
 
     if (_rankedSources.length === 0) {
@@ -402,13 +403,14 @@ function updateSourceMarkerActiveState() {
   });
 }
 
-function selectSourceById(id) {
+function selectSourceById(id, { pan = false } = {}) {
   _selectedSourceId = id;
   const src = _rankedSources.find(s => String(s.id) === id);
   if (!src) return;
   drawPipeline(src);
   renderDetailPanel(src);
   updateSourceMarkerActiveState();
+  if (pan) leafletMap.panTo([src.lat, src.lon], { animate: true });
 }
 
 function navigateSourceByDirection(dx, dy) {
@@ -435,7 +437,7 @@ function navigateSourceByDirection(dx, dy) {
     const score = along / (dist + perp * 1.5 + 1);
     if (score > bestScore) { bestScore = score; best = src; }
   }
-  if (best) selectSourceById(String(best.id));
+  if (best) selectSourceById(String(best.id), { pan: true });
 }
 
 document.addEventListener('keydown', e => {
@@ -693,6 +695,19 @@ function renderDetailPanel(src) {
       <div class="dp-section-label">Recommendation</div>
       ${renderRecommendationCard(src)}
     </div>
+
+    <div class="dp-pdf-wrap">
+      <button class="dp-pdf-btn" onclick="downloadReport()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="7 10 12 15 17 10"/>
+          <line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+        Download PDF Report
+        <span class="dp-pdf-badge">Top 5 sources</span>
+      </button>
+      <div class="dp-pdf-hint">Includes all ranked sources, route data &amp; recommendations</div>
+    </div>
   `;
 }
 
@@ -856,7 +871,7 @@ function renderSourcesPanel(ranked) {
     const pipeKm = sp.cost?.pipeline_km != null ? (+sp.cost.pipeline_km).toFixed(1) + ' km pipe' : null;
     return `
     <div class="bm-src-row bm-src-row-clickable" id="srcc-${sp.id}"
-         onclick="selectSourceById('${sp.id}')">
+         onclick="selectSourceById('${sp.id}', { pan: true })">
       <div class="bm-src-rank" style="background:${fc}20;color:${fc}">#${sp.feasibility_rank ?? sp.rank ?? '?'}</div>
       <div class="bm-src-icon" style="background:${col}18;color:${col}">${TYPE_ICON[sp.source_type] ?? TYPE_ICON.spring}</div>
       <div class="bm-src-info">
