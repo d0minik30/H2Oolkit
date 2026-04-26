@@ -542,6 +542,36 @@ table.dtbl { width: 100%; border-collapse: collapse; font-size: .79rem; }
 
 @keyframes pulse-ring { 0% { transform: translate(-50%,-50%) scale(1); opacity: .55; } 100% { transform: translate(-50%,-50%) scale(2.5); opacity: 0; } }
 
+/* ── PDF DOWNLOAD BUTTON ─────────────────────────── */
+.dp-pdf-wrap {
+  padding: 16px 18px 20px;
+  border-top: 1px solid var(--border);
+}
+.dp-pdf-btn {
+  display: flex; align-items: center; gap: 9px;
+  width: 100%; padding: 12px 18px;
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+  color: #fff; border: none; border-radius: 10px;
+  font-family: inherit; font-size: .9rem; font-weight: 700;
+  cursor: pointer; letter-spacing: -.01em;
+  box-shadow: 0 4px 14px rgba(37,99,235,.32);
+  transition: opacity .15s, box-shadow .15s, transform .1s;
+}
+.dp-pdf-btn:hover { opacity: .93; box-shadow: 0 6px 20px rgba(37,99,235,.4); transform: translateY(-1px); }
+.dp-pdf-btn:active { transform: translateY(0); box-shadow: 0 2px 8px rgba(37,99,235,.3); }
+.dp-pdf-btn:disabled { opacity: .6; cursor: not-allowed; transform: none; }
+.dp-pdf-btn svg { width: 18px; height: 18px; flex-shrink: 0; }
+.dp-pdf-badge {
+  margin-left: auto; font-size: .68rem; font-weight: 600;
+  background: rgba(255,255,255,.22); border-radius: 20px;
+  padding: 2px 9px; letter-spacing: .02em; white-space: nowrap;
+}
+.dp-pdf-hint {
+  margin-top: 7px; font-size: .72rem; color: var(--text-muted);
+  text-align: center; line-height: 1.4;
+}
+.dark .dp-pdf-btn { box-shadow: 0 4px 14px rgba(37,99,235,.2); }
+
 /* ── RESPONSIVE ──────────────────────────────────── */
 @media (max-width: 1200px) {
   .split-layout { grid-template-columns: 1fr 1fr; }
@@ -1626,3 +1656,39 @@ body.landing .landing-wave { opacity: 1; }
   z-index: 800; pointer-events: none;
   display: none;
 }
+
+/* ── PAGE ANIMATIONS ─────────────────────────────── */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes fadeInDown {
+  from { opacity: 0; transform: translateY(-10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* Landing → app transition */
+body.page-enter .navbar         { animation: fadeInDown .4s cubic-bezier(.4,0,.2,1) both; }
+body.page-enter .below-map-grid { animation: fadeInUp .5s cubic-bezier(.4,0,.2,1) .28s both; }
+
+/* Scroll-reveal */
+.scroll-fade {
+  opacity: 0;
+  transform: translateY(12px);
+  transition: opacity .55s ease, transform .55s ease;
+}
+.scroll-fade.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Landing hero stagger */
+body.landing .mos-hero-logo  { animation: fadeInUp .5s ease .05s both; }
+body.landing .mos-hero-title { animation: fadeInUp .5s ease .18s both, title-shimmer 6s linear .68s infinite; }
+body.landing .mos-hero-sub   { animation: fadeInUp .45s ease .28s both; }
+body.landing .mos-hero-pills { animation: fadeInUp .45s ease .38s both; }
+body.landing .mos-input-wrap { animation: fadeInUp .45s ease .46s both; }

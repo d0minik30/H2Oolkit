@@ -154,6 +154,8 @@ function updateRomaniaMinZoom() {
 function exitLandingMode() {
   if (!document.body.classList.contains('landing')) return;
   document.body.classList.remove('landing');
+  document.body.classList.add('page-enter');
+  setTimeout(() => document.body.classList.remove('page-enter'), 1200);
   leafletMap.dragging.enable();
   leafletMap.touchZoom.enable();
   leafletMap.doubleClickZoom.enable();
@@ -812,6 +814,371 @@ function renderRecommendationCard(src) {
     </div>`;
 }
 
+/* ── PDF REPORT EXPORT ─────────────────────────── */
+async function downloadReport() {
+  if (!_rankedSources || !_rankedSources.length) return;
+
+  const btn = document.querySelector('.dp-pdf-btn');
+  const origHtml = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span style="opacity:.7">Generating PDF…</span>'; }
+
+  try {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+
+    const PAGE_W = 210, PAGE_H = 297, M = 18;
+    const CW = PAGE_W - M * 2;
+
+    const C = {
+      blue:   [37, 99, 235],   blueD:  [29, 78, 216],
+      green:  [5, 150, 105],   orange: [180, 83, 9],
+      red:    [220, 38, 38],   dark:   [15, 23, 42],
+      sub:    [51, 65, 85],    muted:  [100, 116, 139],
+      border: [226, 232, 240], bg:     [248, 250, 252],
+      white:  [255, 255, 255], stripe: [241, 245, 249],
+    };
+
+    function feasRgb(s) {
+      if (s >= 80) return C.green;
+      if (s >= 60) return C.blue;
+      if (s >= 40) return C.orange;
+      return C.red;
+    }
+
+    // Load logo as base64
+    let logoDataUrl = null;
+    try {
+      const resp = await fetch('H2Oolkit.png');
+      const blob = await resp.blob();
+      logoDataUrl = await new Promise(res => {
+        const r = new FileReader();
+        r.onload = e => res(e.target.result);
+        r.readAsDataURL(blob);
+      });
+    } catch (_) { /* logo optional */ }
+
+    const top5     = _rankedSources.slice(0, 5);
+    const location = _currentLocationName || 'Unknown Location';
+    const weather  = _lastAnalysisResult?.weather || {};
+    const cp       = _lastAnalysisResult?.collection_point;
+    const dateStr  = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' });
+
+    let y = 0;
+
+    // ── Header band ──
+    doc.setFillColor(...C.blue);
+    doc.rect(0, 0, PAGE_W, 38, 'F');
+    doc.setFillColor(...C.blueD);
+    doc.triangle(PAGE_W - 60, 0, PAGE_W, 0, PAGE_W, 38, 'F');
+
+    if (logoDataUrl) {
+      doc.addImage(logoDataUrl, 'PNG', M, 7, 22, 22);
+      doc.setTextColor(...C.white);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(15);
+      doc.text('Water Source Analysis Report', M + 26, 19);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8.5);
+      doc.text('H2Oolkit — Spring Source Detection Platform', M + 26, 27);
+    } else {
+      doc.setTextColor(...C.white);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(17);
+      doc.text('H2Oolkit', M, 20);
+      doc.setFontSize(11);
+      doc.setFont('helvetica', 'normal');
+      doc.text('Water Source Analysis Report', M, 29);
+    }
+
+    doc.setTextColor(...C.white);
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.text(dateStr, PAGE_W - M, 18, { align: 'right' });
+    doc.text('CASSINI Hackathon — Space for Water', PAGE_W - M, 26, { align: 'right' });
+
+    y = 46;
+
+    // Location strip
+    doc.setFillColor(...C.bg);
+    doc.setDrawColor(...C.border);
+    doc.setLineWidth(0.3);
+    doc.roundedRect(M, y, CW, 13, 2, 2, 'FD');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    doc.setTextColor(...C.muted);
+    doc.text('LOCATION', M + 4, y + 8.5);
+    doc.setFontSize(9);
+    doc.setTextColor(...C.dark);
+    doc.text(location, M + 26, y + 8.5);
+    if (cp) {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(...C.muted);
+      doc.text(`${cp.lat.toFixed(5)}°N  ${cp.lon.toFixed(5)}°E`, PAGE_W - M - 4, y + 8.5, { align: 'right' });
+    }
+
+    y += 22;
+
+    // Section title: Top 5
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(13);
+    doc.setTextColor(...C.dark);
+    doc.text('Top 5 Water Sources', M, y);
+    y += 6;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(...C.muted);
+    doc.text('Ranked by composite feasibility score — satellite analysis · terrain · cost efficiency', M, y);
+    y += 8;
+
+    // Summary table
+    const thead = [['#', 'Source Name', 'Type', 'Score', 'Route', 'Elev.', 'Flow', 'Feed']];
+    const tbody = top5.map(src => {
+      const fs      = src.feasibility_score ?? 0;
+      const route   = src.route || {};
+      const cost    = src.cost  || {};
+      const distKm  = (route.terrain_adjusted_distance_km ?? (src.distance_m / 1000)).toFixed(2) + ' km';
+      const elevDiff = Math.round(route.elevation_difference_m ?? 0);
+      const flowM3  = Math.round((src.estimated_daily_flow_liters || 0) / 1000);
+      return [
+        `#${src.feasibility_rank ?? '?'}`,
+        src.name,
+        TYPE_LABEL[src.source_type] ?? src.source_type,
+        `${Math.round(fs)}/100`,
+        distKm,
+        `${elevDiff >= 0 ? '+' : ''}${elevDiff} m`,
+        `${flowM3} m³/d`,
+        cost.needs_pumping ? 'Pumped' : 'Gravity',
+      ];
+    });
+
+    doc.autoTable({
+      head: thead, body: tbody,
+      startY: y,
+      margin: { left: M, right: M },
+      styles: {
+        font: 'helvetica', fontSize: 8.5,
+        cellPadding: { top: 4, bottom: 4, left: 3, right: 3 },
+        textColor: C.dark, lineColor: C.border, lineWidth: 0.25,
+      },
+      headStyles: { fillColor: C.blue, textColor: C.white, fontStyle: 'bold', fontSize: 8.5 },
+      columnStyles: {
+        0: { cellWidth: 9,  halign: 'center', fontStyle: 'bold' },
+        1: { cellWidth: 44 },
+        2: { cellWidth: 24 },
+        3: { cellWidth: 20, halign: 'center' },
+        4: { cellWidth: 22, halign: 'center' },
+        5: { cellWidth: 19, halign: 'center' },
+        6: { cellWidth: 18, halign: 'center' },
+        7: { cellWidth: 18, halign: 'center' },
+      },
+      didParseCell: data => {
+        if (data.section !== 'body') return;
+        if (data.row.index % 2 === 0) data.cell.styles.fillColor = C.stripe;
+        if (data.column.index === 3) {
+          const s = parseInt(data.cell.raw);
+          if (!isNaN(s)) { data.cell.styles.textColor = feasRgb(s); data.cell.styles.fontStyle = 'bold'; }
+        }
+        if (data.column.index === 7) {
+          data.cell.styles.textColor = data.cell.raw === 'Gravity' ? C.green : C.orange;
+          data.cell.styles.fontStyle = 'bold';
+        }
+      },
+    });
+
+    y = doc.lastAutoTable.finalY + 14;
+
+    // ── Per-source detail cards ──
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(13);
+    doc.setTextColor(...C.dark);
+    doc.text('Source Details', M, y);
+    y += 3;
+    doc.setDrawColor(...C.border);
+    doc.setLineWidth(0.4);
+    doc.line(M, y + 2, PAGE_W - M, y + 2);
+    y += 10;
+
+    top5.forEach((src, i) => {
+      const hasRec = !!src.recommendation;
+      const blockH = hasRec ? 68 : 52;
+      if (y + blockH > PAGE_H - 22) {
+        addPageFooter(doc, PAGE_W, PAGE_H, M, C, doc.internal.getNumberOfPages());
+        doc.addPage();
+        y = M;
+      }
+
+      const fs    = src.feasibility_score ?? 0;
+      const fc    = feasRgb(fs);
+      const route = src.route || {};
+      const cost  = src.cost  || {};
+      const distKm = (route.terrain_adjusted_distance_km ?? (src.distance_m / 1000)).toFixed(2);
+      const elev  = Math.round(route.elevation_difference_m ?? 0);
+      const flowM3 = Math.round((src.estimated_daily_flow_liters || 0) / 1000);
+      const verd  = recVerdict(fs);
+
+      // Card background
+      doc.setFillColor(...C.bg);
+      doc.setDrawColor(...C.border);
+      doc.setLineWidth(0.3);
+      doc.roundedRect(M, y, CW, blockH, 3, 3, 'FD');
+
+      // Left accent bar
+      doc.setFillColor(...fc);
+      doc.roundedRect(M, y, 4, blockH, 3, 3, 'F');
+      doc.rect(M + 1, y, 3, blockH, 'F');
+
+      // Rank circle
+      doc.setFillColor(...fc);
+      doc.circle(M + 14, y + 10, 6, 'F');
+      doc.setTextColor(...C.white);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8);
+      doc.text(`${src.feasibility_rank ?? i + 1}`, M + 14, y + 12.5, { align: 'center' });
+
+      // Name & verdict
+      doc.setTextColor(...C.dark);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10.5);
+      doc.text(src.name, M + 23, y + 9);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(...C.muted);
+      doc.text(`${TYPE_LABEL[src.source_type] ?? src.source_type}  ·  ${verd.title}`, M + 23, y + 15.5);
+
+      // Score pill (top-right)
+      doc.setFillColor(...fc);
+      doc.roundedRect(PAGE_W - M - 24, y + 5, 20, 10, 2, 2, 'F');
+      doc.setTextColor(...C.white);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10);
+      doc.text(`${Math.round(fs)}`, PAGE_W - M - 15, y + 12, { align: 'center' });
+      doc.setFontSize(6.5);
+      doc.text('/100', PAGE_W - M - 6, y + 12, { align: 'right' });
+
+      // 8-cell metric grid (2 rows × 4 cols)
+      const metrics = [
+        ['PIPELINE',    `${distKm} km`],
+        ['ELEVATION',   `${elev >= 0 ? '+' : ''}${elev} m`],
+        ['DAILY FLOW',  `${flowM3} m³/d`],
+        ['FEED TYPE',   cost.needs_pumping ? 'Pumped' : 'Gravity'],
+        ['PIPE ⌀',      `${route.pipe_diameter_mm ?? '—'} mm`],
+        ['SUPPLY COVER',`${cost.supply_covers_demand_pct ?? '?'}%`],
+        ['RESERVOIR',   `${cost.reservoir_m3 ?? '—'} m³`],
+        ['EU-HYDRO',    src.eu_hydro_linked === true ? 'Verified ✓' : src.eu_hydro_linked === false ? 'Not linked' : '—'],
+      ];
+      const colW  = CW / 4;
+      const startX = M + 6;
+      const startY = y + 24;
+      metrics.forEach((m, mi) => {
+        const col = mi % 4;
+        const row = Math.floor(mi / 4);
+        const mx = startX + col * colW;
+        const my = startY + row * 11;
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(6.5);
+        doc.setTextColor(...C.muted);
+        doc.text(m[0], mx, my);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8.5);
+        doc.setTextColor(...C.dark);
+        doc.text(m[1], mx, my + 5.5);
+      });
+
+      // Recommendation quote
+      if (hasRec) {
+        const recY = y + blockH - 16;
+        doc.setDrawColor(...fc);
+        doc.setLineWidth(0.8);
+        doc.line(M + 6, recY, M + 6, recY + 11);
+        doc.setLineWidth(0.3);
+        const lines = doc.splitTextToSize(src.recommendation, CW - 18);
+        doc.setFont('helvetica', 'italic');
+        doc.setFontSize(7.5);
+        doc.setTextColor(...C.sub);
+        doc.text(lines.slice(0, 2), M + 10, recY + 4.5, { lineHeightFactor: 1.5 });
+      }
+
+      y += blockH + 8;
+    });
+
+    // ── Weather / climate section ──
+    if (weather && weather.mean_annual_precipitation_mm) {
+      if (y + 55 > PAGE_H - 22) {
+        addPageFooter(doc, PAGE_W, PAGE_H, M, C, doc.internal.getNumberOfPages());
+        doc.addPage();
+        y = M;
+      }
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.setTextColor(...C.dark);
+      doc.text('Climate & Precipitation', M, y);
+      y += 3;
+      doc.setDrawColor(...C.border);
+      doc.setLineWidth(0.4);
+      doc.line(M, y + 1, PAGE_W - M, y + 1);
+      y += 9;
+
+      if (weather.recommendation) {
+        const wLines = doc.splitTextToSize(weather.recommendation, CW - 14);
+        doc.setFillColor(...C.bg);
+        doc.rect(M, y, CW, wLines.length * 5.5 + 8, 'F');
+        doc.setDrawColor(...C.blue);
+        doc.setLineWidth(0.8);
+        doc.line(M, y, M, y + wLines.length * 5.5 + 8);
+        doc.setLineWidth(0.3);
+        doc.setFont('helvetica', 'italic');
+        doc.setFontSize(8);
+        doc.setTextColor(...C.sub);
+        doc.text(wLines, M + 6, y + 5, { lineHeightFactor: 1.5 });
+        y += wLines.length * 5.5 + 13;
+      }
+
+      const wRows = [
+        ['Annual Precipitation (10-year avg)', `${Math.round(weather.mean_annual_precipitation_mm)} mm`],
+        ['Estimated Groundwater Recharge',     `${Math.round(weather.estimated_recharge_mm ?? 0)} mm/yr`],
+        ['Precipitation Trend',                `${(weather.trend_mm_per_year ?? 0).toFixed(1)} mm/yr`],
+        ['Climate Data Confidence',            `${Math.round((weather.confidence ?? 0) * 100)}%`],
+      ];
+      wRows.forEach((row, ri) => {
+        if (ri % 2 === 0) { doc.setFillColor(...C.stripe); doc.rect(M, y - 1, CW, 8, 'F'); }
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8.5);
+        doc.setTextColor(...C.sub);
+        doc.text(row[0], M + 3, y + 4.5);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(...C.dark);
+        doc.text(row[1], PAGE_W - M - 3, y + 4.5, { align: 'right' });
+        y += 8;
+      });
+    }
+
+    // Footer on last page
+    addPageFooter(doc, PAGE_W, PAGE_H, M, C, doc.internal.getNumberOfPages());
+
+    const fname = `H2Oolkit_${location.replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toISOString().slice(0, 10)}.pdf`;
+    doc.save(fname);
+
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = origHtml; }
+  }
+}
+
+function addPageFooter(doc, PAGE_W, PAGE_H, M, C, pageNum) {
+  const fy = PAGE_H - 13;
+  doc.setFillColor(...C.blue);
+  doc.rect(0, fy, PAGE_W, 13, 'F');
+  doc.setTextColor(...C.white);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.text('H2Oolkit', M, fy + 8);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(6.5);
+  doc.text('Copernicus Sentinel-1/2  ·  EU-Hydro  ·  OpenStreetMap  ·  CASSINI Hackathon 2026', PAGE_W / 2, fy + 8, { align: 'center' });
+  doc.text(`Page ${pageNum}`, PAGE_W - M, fy + 8, { align: 'right' });
+}
+
 function returnToPointSelect() {
   if (!_scanCenter) return;
   if (_collectionMarker) { leafletMap.removeLayer(_collectionMarker); _collectionMarker = null; }
@@ -1213,6 +1580,17 @@ async function init() {
       `The Flask backend at ${H2O.base} did not respond.\nStart it from the project root with:\n    py -m backend.server\n\nThen reload this page.`
     );
   }
+
+  const scrollObserver = new IntersectionObserver(
+    entries => entries.forEach(e => {
+      if (e.isIntersecting) {
+        e.target.classList.add('visible');
+        scrollObserver.unobserve(e.target);
+      }
+    }),
+    { threshold: 0.07 }
+  );
+  document.querySelectorAll('.scroll-fade').forEach(el => scrollObserver.observe(el));
 }
 
 init();
