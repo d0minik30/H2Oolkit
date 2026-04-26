@@ -691,7 +691,7 @@ table.dtbl { width: 100%; border-collapse: collapse; font-size: .79rem; }
 .mos-section-label { padding:7px 12px 4px; font-size:.65rem; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--text-muted); border-bottom:1px solid var(--border); }
 .mos-pin-outline { fill:none; color:var(--text-muted); }
 .mos-hero { text-align: center; margin-bottom: 20px; }
-.mos-hero-logo { height: 64px; width: auto; margin-bottom: 14px; filter: drop-shadow(0 2px 12px rgba(0,0,0,.5)); }
+.mos-hero-logo { height: 100px; width: auto; margin-bottom: 16px; filter: drop-shadow(0 4px 20px rgba(0,0,0,.35)); }
 .mos-hero-title { font-size: 2rem; font-weight: 800; margin-bottom: 10px; letter-spacing: -.04em; line-height: 1.15; text-shadow: 0 2px 16px rgba(0,0,0,.55); }
 .mos-hero-sub { font-size: .82rem; color: rgba(255,255,255,.88); text-shadow: 0 1px 6px rgba(0,0,0,.45); line-height: 1.6; margin-bottom: 14px; }
 .mos-hero-pills { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
