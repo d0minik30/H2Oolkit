@@ -169,7 +169,7 @@ function resetAll() {
   setMapInstruction(false);
 }
 
-/* ── 1. LOCATION SEARCH → fetch sources ────────── */
+/* ── 1. LOCATION SEARCH → ask for pin drop ─────── */
 async function flyToLocation(lat, lon, name) {
   const wasLanding = document.body.classList.contains('landing');
   resetAll();
@@ -189,11 +189,26 @@ async function flyToLocation(lat, lon, name) {
     leafletMap.flyTo([_scanCenter.lat, _scanCenter.lon], 12, { duration: 0.9 });
   }, flyDelay);
 
+  appState = 'awaiting-pin';
+  document.getElementById('map').style.cursor = 'crosshair';
+  setMapInstruction(true, `📍 Click anywhere on the map to set your collection point`);
+  renderPinDropPanel(name);
+  document.getElementById('sources-count').textContent = '—';
+  document.getElementById('sources-list').innerHTML =
+    `<div class="bm-empty">Place a collection point on the map to discover water sources.</div>`;
+  document.getElementById('overview-stats').innerHTML = '';
+}
+
+/* ── 1b. PIN DROPPED → draw circle + fetch + analyse ─ */
+async function startAnalysisFromPin(lat, lon) {
+  appState = 'scanning';
+  document.getElementById('map').style.cursor = '';
+  setMapInstruction(false);
+
   drawScanCircle();
   drawScanCenterMarker();
 
-  appState = 'scanning';
-  renderLoadingPanel(`Scanning water sources within ${SCAN_RADIUS_KM} km of ${name}…`);
+  renderLoadingPanel(`Scanning water sources within ${SCAN_RADIUS_KM} km of ${_currentLocationName}…`);
   document.getElementById('sources-count').textContent = 'scanning…';
   document.getElementById('sources-list').innerHTML =
     `<div class="bm-empty">Searching OpenStreetMap and EU-Hydro databases…</div>`;
@@ -203,8 +218,7 @@ async function flyToLocation(lat, lon, name) {
     const data = await H2O.fetchWaterSources(_scanCenter.lat, _scanCenter.lon, SCAN_RADIUS_KM * 1000);
     _sources = data.sources || [];
     addSourceMarkers(_sources);
-    enterPointSelectMode(name, _sources.length, data.eu_hydro_available);
-    renderSourcesPanelRaw(_sources);
+    await runFeasibilityAnalysis(lat, lon);
   } catch (err) {
     renderErrorPanel(`Could not reach the backend at ${H2O.base}.`,
       `Start it from the project root with:\n    py -m backend.server\n\nDetails: ${err.message}`);
@@ -271,14 +285,22 @@ function isInsideScanCircle(lat, lon) {
 }
 
 function onMapMouseMove(e) {
+  if (appState === 'awaiting-pin') {
+    document.getElementById('map').style.cursor = 'crosshair';
+    return;
+  }
   if (appState !== 'point-select') return;
   const inside = isInsideScanCircle(e.latlng.lat, e.latlng.lng);
   document.getElementById('map').style.cursor = inside ? 'crosshair' : 'not-allowed';
 }
 
 async function onMapClick(e) {
+  if (appState === 'awaiting-pin') {
+    await startAnalysisFromPin(e.latlng.lat, e.latlng.lng);
+    return;
+  }
   if (appState !== 'point-select') return;
-  if (!isInsideScanCircle(e.latlng.lat, e.latlng.lng)) return;   // ignore clicks outside circle
+  if (!isInsideScanCircle(e.latlng.lat, e.latlng.lng)) return;
   await runFeasibilityAnalysis(e.latlng.lat, e.latlng.lng);
 }
 
@@ -417,6 +439,23 @@ function renderEmptyResultsPanel(result) {
   document.getElementById('sources-count').textContent = '0 detected';
   document.getElementById('sources-list').innerHTML =
     `<div class="bm-empty">No water sources within ${SCAN_RADIUS_KM} km.</div>`;
+}
+
+function renderPinDropPanel(name) {
+  document.getElementById('detail-panel').innerHTML = `
+    <div class="dp-header">
+      <div>
+        <div class="dp-title">${escapeHtml(name)}</div>
+        <div class="dp-sub">Ready to scan &middot; ${SCAN_RADIUS_KM} km radius</div>
+      </div>
+    </div>
+    <div class="dp-instruction-box">
+      <svg viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5S10.62 6.5 12 6.5s2.5 1.12 2.5 2.5S13.38 11.5 12 11.5z"/></svg>
+      <div>
+        <div class="dp-instr-title">Drop a Collection Point</div>
+        <div class="dp-instr-text">Click anywhere on the map to place your water collection point. The system will then draw a ${SCAN_RADIUS_KM} km scan circle, discover all nearby water sources, and rank the best 15 by feasibility.</div>
+      </div>
+    </div>`;
 }
 
 function renderPointSelectPanel(name, count, euHydroAvailable) {
@@ -573,16 +612,21 @@ function returnToPointSelect() {
   if (!_scanCenter) return;
   if (_collectionMarker) { leafletMap.removeLayer(_collectionMarker); _collectionMarker = null; }
   if (_pipelineLayer)    { leafletMap.removeLayer(_pipelineLayer);    _pipelineLayer = null; }
+  if (_scanCircle)       { leafletMap.removeLayer(_scanCircle);       _scanCircle = null; }
+  if (_scanCenterMarker) { leafletMap.removeLayer(_scanCenterMarker); _scanCenterMarker = null; }
+  Object.values(_sourceMarkers).forEach(m => leafletMap.removeLayer(m));
+  _sourceMarkers = {};
+  _sources = [];
   _rankedSources = [];
   _selectedSourceId = null;
-  // Reset markers to plain blue
-  Object.values(_sourceMarkers).forEach(m => {
-    m.setIcon(L.divIcon({
-      html: `<div class="src-marker src-marker-blue"></div>`,
-      className: '', iconSize: [12, 12], iconAnchor: [6, 6],
-    }));
-  });
-  enterPointSelectMode(_currentLocationName, _sources.length, true);
+  appState = 'awaiting-pin';
+  document.getElementById('map').style.cursor = 'crosshair';
+  setMapInstruction(true, `📍 Click anywhere on the map to set your collection point`);
+  renderPinDropPanel(_currentLocationName);
+  document.getElementById('sources-count').textContent = '—';
+  document.getElementById('sources-list').innerHTML =
+    `<div class="bm-empty">Place a collection point on the map to discover water sources.</div>`;
+  document.getElementById('overview-stats').innerHTML = '';
 }
 
 /* ── BELOW-MAP RENDERING ───────────────────────── */
