@@ -217,7 +217,6 @@ async function startAnalysisFromPin(lat, lon) {
   try {
     const data = await H2O.fetchWaterSources(_scanCenter.lat, _scanCenter.lon, SCAN_RADIUS_KM * 1000);
     _sources = data.sources || [];
-    addSourceMarkers(_sources);
     await runFeasibilityAnalysis(lat, lon);
   } catch (err) {
     renderErrorPanel(`Could not reach the backend at ${H2O.base}.`,
@@ -330,12 +329,8 @@ async function runFeasibilityAnalysis(lat, lon) {
       return;
     }
 
-    // Add markers for any sources returned by analysis that aren't already on the map
-    // (analysis may discover slightly different sources around the collection point)
-    const alreadyShown = new Set(Object.keys(_sourceMarkers));
-    const newSources = _rankedSources.filter(s => !alreadyShown.has(String(s.id)));
-    if (newSources.length > 0) addSourceMarkers([..._sources, ...newSources]);
-
+    // Place markers only for ranked sources, already colored by feasibility
+    addSourceMarkers(_rankedSources);
     recolorSourceMarkersByFeasibility(_rankedSources);
 
     const best = _rankedSources[0];
