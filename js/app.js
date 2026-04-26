@@ -16,7 +16,7 @@
  *        - pipeline polyline from best source to collection point
  */
 
-const SCAN_RADIUS_KM = 10;
+const SCAN_RADIUS_KM = 7;
 
 const TYPE_LABEL = {
   spring: 'Spring', stream: 'Stream', river: 'River',
@@ -206,7 +206,6 @@ async function startAnalysisFromPin(lat, lon) {
   setMapInstruction(false);
 
   drawScanCircle();
-  drawScanCenterMarker();
 
   renderLoadingPanel(`Scanning water sources within ${SCAN_RADIUS_KM} km of ${_currentLocationName}…`);
   document.getElementById('sources-count').textContent = 'scanning…';
