@@ -127,8 +127,6 @@ def _master_recommendation(spring: dict, cost: dict, reserve: dict, route: dict)
     prob = spring["spring_probability"]
     feasibility = cost["feasibility"]
     flow = reserve["daily_flow_liters"]
-    total_eur = cost["total_cost_eur"]
-    grant = cost["pnrr_grant_eur"]
 
     if prob < 0.40:
         return (
@@ -143,16 +141,11 @@ def _master_recommendation(spring: dict, cost: dict, reserve: dict, route: dict)
         )
 
     feed = "gravity-fed" if route["feed_type"] == "gravity" else "pumped"
-    pnrr_note = (
-        f" PNRR financing available: {grant:,.0f} EUR grant reduces village cost to "
-        f"{cost['village_contribution_eur']:,.0f} EUR."
-        if cost["pnrr_eligible"] else ""
-    )
+    pipe_km = cost["pipeline_km"]
 
     return (
         f"Viable spring site ({prob:.0%} probability, {flow:,.0f} L/day estimated flow). "
-        f"{feed.capitalize()} {route['terrain_adjusted_distance_km']:.1f} km pipeline to village. "
-        f"Total infrastructure cost: {total_eur:,.0f} EUR.{pnrr_note}"
+        f"{feed.capitalize()} pipeline to village: {pipe_km:.1f} km of pipe required."
     )
 
 
@@ -192,9 +185,9 @@ def _calculate_feasibility_score(
     estimated_debit_m3_day = estimated_width_m * 0.3 * 0.5 * 86400  # m3/day
     score_debit = min(100, estimated_debit_m3_day / 100)  # 8640 m3/day = 100
 
-    # Materials/cost score: lower cost indicates simpler materials needed
-    total_cost = cost["total_cost_eur"]
-    score_materials = max(0, 100 - (total_cost / 200000) * 50)  # 400k EUR = 0
+    # Pipeline distance score: shorter pipe run = simpler installation
+    pipe_km = cost["pipeline_km"]
+    score_materials = max(0, 100 - (pipe_km / 15) * 100)  # 15 km = score 0
 
     # Spring probability bonus
     spring_prob = spring["spring_probability"]
@@ -333,6 +326,9 @@ def analyze_village_water_supply(
             haversine_m(village_lat, village_lon, source["lat"], source["lon"]), 1
         )
 
+    # Keep only sources inside the scan circle (from the collection point)
+    sources = [s for s in sources if s["distance_m"] <= sr]
+
     # 7. Fetch GEE satellite data for each source and calculate spring probability
     import logging
     log_analyzer = logging.getLogger('h2oolkit')
@@ -395,6 +391,9 @@ def analyze_village_water_supply(
                 source.get("satellite_data", {})
             ), 1)
 
+    # Show only the top 15 sources
+    ranked = ranked[:15]
+
     best = ranked[0] if ranked else None
     alternatives = ranked[1:4]  # up to 3 alternatives shown
 
@@ -450,11 +449,9 @@ def _village_recommendation(
     stype     = best["source_type"]
     method    = best["supply_method"]
     dist_km   = best["route"]["terrain_adjusted_distance_km"]
-    cost_eur  = best["cost"]["total_cost_eur"]
-    contrib   = best["cost"]["village_contribution_eur"]
+    pipe_km   = best["cost"]["pipeline_km"]
     flow      = best["estimated_daily_flow_liters"]
     elev_diff = best["route"]["elevation_difference_m"]
-    pnrr      = best["cost"]["pnrr_eligible"]
 
     method_text = {
         "gravity_feed":             "gravity-fed — no pumping cost",
@@ -469,11 +466,7 @@ def _village_recommendation(
     if trend < -10:
         trend_note = " Note: local precipitation is declining — long-term flow may decrease."
 
-    pnrr_note = (
-        f" PNRR grant covers 85%; village contribution ~{contrib:,.0f} EUR."
-        if pnrr else
-        f" No PNRR eligibility — total cost {cost_eur:,.0f} EUR must be locally financed."
-    )
+    pipe_note = f" Pipeline required: {pipe_km:.1f} km of pipe."
 
     alt_note = ""
     if alternatives:
@@ -483,7 +476,7 @@ def _village_recommendation(
     return (
         f"Best option: {name} ({stype}), {dist_km:.1f} km away, {method_text}. "
         f"Estimated flow {flow:,.0f} L/day for {population} residents."
-        f"{pnrr_note}{alt_note}{trend_note}"
+        f"{pipe_note}{alt_note}{trend_note}"
     )
 
 

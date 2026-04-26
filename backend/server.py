@@ -105,7 +105,14 @@ def water_sources():
                 'eu_hydro_note': 'From EU-Hydro database, not in OSM.',
             })
 
-    sources.sort(key=lambda s: s['distance_m'])
+    # Prioritise higher-quality source types; drop ditches and generic waterway nodes
+    # that are very unlikely to serve as a village water supply.
+    _TYPE_PRIORITY = {'spring': 0, 'well': 1, 'lake': 2, 'river': 3, 'stream': 4}
+    sources = [s for s in sources if s.get('source_type') in _TYPE_PRIORITY]
+    sources.sort(key=lambda s: (_TYPE_PRIORITY.get(s['source_type'], 99), s['distance_m']))
+
+    # Cap the initial scan display at 15 sources — matches the analysis pipeline limit.
+    sources = sources[:15]
 
     return jsonify({
         'lat': lat,

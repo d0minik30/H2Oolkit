@@ -8,7 +8,7 @@ Efficiency score = weighted sum of scoring components:
                              cheaper and more reliable than pumping
   distance           (20%) — shorter pipeline = lower cost + less head loss
   reliability        (15%) — perennial river > seasonal stream > uncertain spring
-  cost_efficiency    (15%) — normalised inverse of total infrastructure cost
+  cost_efficiency    (15%) — shorter pipeline km scores higher (normalised)
 
 Spring probability is satellite-derived from NDVI, soil moisture, JRC water
 occurrence, topography, and distance to rivers. Topography is still dominant
@@ -31,8 +31,8 @@ _WEIGHTS = {
 # How intermittent sources are penalised on their reliability score
 _INTERMITTENT_PENALTY = 0.20
 
-# Small bonus applied to springs not found in the official EU-Hydro network
-_EU_HYDRO_UNLINKED_BONUS = 0.05
+# Bonus for springs not in the official EU-Hydro network (undiscovered sources)
+_EU_HYDRO_UNLINKED_BONUS = 0.10
 
 
 def rank_water_sources(
@@ -119,14 +119,14 @@ def rank_water_sources(
             "eu_hydro_note":   source.get("eu_hydro_note"),
         })
 
-    # Cost efficiency is relative — normalise so the cheapest scores 1.0
-    costs = [e["cost"]["total_cost_eur"] for e in enriched]
-    max_cost  = max(costs) if costs else 1.0
-    min_cost  = min(costs) if costs else 0.0
-    cost_range = max(max_cost - min_cost, 1.0)
+    # Cost efficiency: shorter pipeline scores higher (normalised across candidate set).
+    pipe_kms = [e["cost"]["pipeline_km"] for e in enriched]
+    max_pipe  = max(pipe_kms) if pipe_kms else 1.0
+    min_pipe  = min(pipe_kms) if pipe_kms else 0.0
+    pipe_range = max(max_pipe - min_pipe, 0.01)
 
     for e in enriched:
-        cost_score = 1.0 - (e["cost"]["total_cost_eur"] - min_cost) / cost_range
+        cost_score = 1.0 - (e["cost"]["pipeline_km"] - min_pipe) / pipe_range
         e["scores"]["cost_efficiency"] = round(cost_score, 3)
 
         base_score = (
@@ -261,8 +261,7 @@ def _source_recommendation(entry: dict, population: int) -> str:
     stype       = entry["source_type"]
     method      = entry["supply_method"]
     flow        = entry["estimated_daily_flow_liters"]
-    cost_eur    = entry["cost"]["total_cost_eur"]
-    contrib_eur = entry["cost"]["village_contribution_eur"]
+    pipe_km     = entry["cost"]["pipeline_km"]
     feasibility = entry["cost"]["feasibility"]
     dist_km     = entry["route"]["terrain_adjusted_distance_km"]
     score       = entry["efficiency_score"]
@@ -292,12 +291,7 @@ def _source_recommendation(entry: dict, population: int) -> str:
     else:
         feasibility_note = f" Estimated flow ({flow:,.0f} L/day) meets village demand."
 
-    pnrr = entry["cost"]["pnrr_eligible"]
-    finance_note = (
-        f" PNRR grant covers 85% — village pays ~{contrib_eur:,.0f} EUR."
-        if pnrr else
-        f" No PNRR eligibility — full cost {cost_eur:,.0f} EUR must be locally financed."
-    )
+    pipeline_note = f" Pipeline required: {pipe_km:.1f} km."
 
     # Discovery note for EU-Hydro unlinked springs
     discovery_note = ""
@@ -309,5 +303,5 @@ def _source_recommendation(entry: dict, population: int) -> str:
     return (
         f"Rank #{entry['rank']} (score {score:.2f}): {name} — {stype}, "
         f"{dist_km:.1f} km, {method_text}."
-        f"{feasibility_note}{finance_note}{discovery_note}"
+        f"{feasibility_note}{pipeline_note}{discovery_note}"
     )

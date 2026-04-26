@@ -53,7 +53,6 @@ function feasLabel(score) {
   return 'Very Low';
 }
 
-function fmtCost(n) { return '€' + Math.round(n).toLocaleString('de-DE'); }
 function fmtNum(n)  { return Math.round(n).toLocaleString('de-DE'); }
 
 function haversineKm(lat1, lon1, lat2, lon2) {
@@ -81,17 +80,25 @@ let _currentLocationName = '';
 
 /* ── MAP ───────────────────────────────────────── */
 function initMap() {
+  // Esri's World_Imagery tile pyramid stops having usable imagery for rural
+  // Romania around z=17 — anything past that returns the placeholder
+  // "Map data not yet available." Cap the map there.
+  const MAP_MAX_ZOOM = 17;
+
   leafletMap = L.map('map', {
     center: [46.0, 25.0], zoom: 7, zoomControl: true,
-    maxBounds: ROMANIA_BOUNDS, maxBoundsViscosity: 1.0, minZoom: 6,
+    maxBounds: ROMANIA_BOUNDS, maxBoundsViscosity: 1.0,
+    // minZoom is set dynamically by updateRomaniaMinZoom() so the user can
+    // never zoom out past the point where the whole country fits the map.
+    maxZoom: MAP_MAX_ZOOM,
   });
 
   L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-    attribution: 'Imagery &copy; Esri', maxZoom: 19,
+    attribution: 'Imagery &copy; Esri', maxZoom: MAP_MAX_ZOOM,
   }).addTo(leafletMap);
 
   L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
-    attribution: '', maxZoom: 19, opacity: 0.85,
+    attribution: '', maxZoom: MAP_MAX_ZOOM, opacity: 0.85,
   }).addTo(leafletMap);
 
   const legend = L.control({ position: 'bottomleft' });
@@ -119,6 +126,25 @@ function initMap() {
 
   leafletMap.on('click', onMapClick);
   leafletMap.on('mousemove', onMapMouseMove);
+
+  // Compute the smallest zoom level where the entire Romania bounding box
+  // still fits inside the visible map viewport, then use that as minZoom
+  // so the user can't zoom out further. Recompute whenever the viewport
+  // size changes (window resize, fullscreen toggle, layout change).
+  updateRomaniaMinZoom();
+  window.addEventListener('resize', () => {
+    leafletMap.invalidateSize();
+    updateRomaniaMinZoom();
+  });
+}
+
+function updateRomaniaMinZoom() {
+  if (!leafletMap) return;
+  // getBoundsZoom returns the max zoom where the bounds fit the current view
+  // — which is exactly the minimum we want to allow when zooming out.
+  const fitZoom = leafletMap.getBoundsZoom(ROMANIA_BOUNDS, false);
+  leafletMap.setMinZoom(fitZoom);
+  if (leafletMap.getZoom() < fitZoom) leafletMap.setZoom(fitZoom);
 }
 
 function exitLandingMode() {
@@ -131,7 +157,9 @@ function exitLandingMode() {
   leafletMap.boxZoom.enable();
   leafletMap.keyboard.enable();
   leafletMap.zoomControl.getContainer().style.display = '';
-  setTimeout(() => leafletMap.invalidateSize(), 50);
+  // Don't invalidate here — the caller does it after the layout transition
+  // settles so flyTo() centers on the post-transition viewport, not the
+  // stale full-screen landing dimensions.
 }
 
 function setMapInstruction(show, text = '') {
@@ -162,20 +190,47 @@ function resetAll() {
   setMapInstruction(false);
 }
 
-/* ── 1. LOCATION SEARCH → fetch sources ────────── */
+/* ── 1. LOCATION SEARCH → ask for pin drop ─────── */
 async function flyToLocation(lat, lon, name) {
+  const wasLanding = document.body.classList.contains('landing');
   resetAll();
   _currentLocationName = name;
   _scanCenter = { lat: parseFloat(lat), lon: parseFloat(lon) };
 
   exitLandingMode();
-  leafletMap.flyTo([_scanCenter.lat, _scanCenter.lon], 12, { duration: 1.0 });
+
+  // The split-layout grid transitions over ~450ms when leaving landing mode.
+  // Flying before the transition settles makes Leaflet compute the centre
+  // against the stale full-screen viewport, so the circle ends up offset.
+  // Wait for the layout to settle, then invalidateSize + flyTo so the scan
+  // centre lands in the middle of the visible map.
+  const flyDelay = wasLanding ? 480 : 0;
+  setTimeout(() => {
+    leafletMap.invalidateSize();
+    updateRomaniaMinZoom();
+    leafletMap.flyTo([_scanCenter.lat, _scanCenter.lon], 12, { duration: 0.9 });
+  }, flyDelay);
+
+  appState = 'awaiting-pin';
+  document.getElementById('map').style.cursor = 'crosshair';
+  setMapInstruction(true, `📍 Click anywhere on the map to set your collection point`);
+  renderPinDropPanel(name);
+  document.getElementById('sources-count').textContent = '—';
+  document.getElementById('sources-list').innerHTML =
+    `<div class="bm-empty">Place a collection point on the map to discover water sources.</div>`;
+  document.getElementById('overview-stats').innerHTML = '';
+}
+
+/* ── 1b. PIN DROPPED → draw circle + fetch + analyse ─ */
+async function startAnalysisFromPin(lat, lon) {
+  appState = 'scanning';
+  document.getElementById('map').style.cursor = '';
+  setMapInstruction(false);
 
   drawScanCircle();
   drawScanCenterMarker();
 
-  appState = 'scanning';
-  renderLoadingPanel(`Scanning water sources within ${SCAN_RADIUS_KM} km of ${name}…`);
+  renderLoadingPanel(`Scanning water sources within ${SCAN_RADIUS_KM} km of ${_currentLocationName}…`);
   document.getElementById('sources-count').textContent = 'scanning…';
   document.getElementById('sources-list').innerHTML =
     `<div class="bm-empty">Searching OpenStreetMap and EU-Hydro databases…</div>`;
@@ -185,8 +240,7 @@ async function flyToLocation(lat, lon, name) {
     const data = await H2O.fetchWaterSources(_scanCenter.lat, _scanCenter.lon, SCAN_RADIUS_KM * 1000);
     _sources = data.sources || [];
     addSourceMarkers(_sources);
-    enterPointSelectMode(name, _sources.length, data.eu_hydro_available);
-    renderSourcesPanelRaw(_sources);
+    await runFeasibilityAnalysis(lat, lon);
   } catch (err) {
     renderErrorPanel(`Could not reach the backend at ${H2O.base}.`,
       `Start it from the project root with:\n    py -m backend.server\n\nDetails: ${err.message}`);
@@ -253,14 +307,22 @@ function isInsideScanCircle(lat, lon) {
 }
 
 function onMapMouseMove(e) {
+  if (appState === 'awaiting-pin') {
+    document.getElementById('map').style.cursor = 'crosshair';
+    return;
+  }
   if (appState !== 'point-select') return;
   const inside = isInsideScanCircle(e.latlng.lat, e.latlng.lng);
   document.getElementById('map').style.cursor = inside ? 'crosshair' : 'not-allowed';
 }
 
 async function onMapClick(e) {
+  if (appState === 'awaiting-pin') {
+    await startAnalysisFromPin(e.latlng.lat, e.latlng.lng);
+    return;
+  }
   if (appState !== 'point-select') return;
-  if (!isInsideScanCircle(e.latlng.lat, e.latlng.lng)) return;   // ignore clicks outside circle
+  if (!isInsideScanCircle(e.latlng.lat, e.latlng.lng)) return;
   await runFeasibilityAnalysis(e.latlng.lat, e.latlng.lng);
 }
 
@@ -401,6 +463,23 @@ function renderEmptyResultsPanel(result) {
     `<div class="bm-empty">No water sources within ${SCAN_RADIUS_KM} km.</div>`;
 }
 
+function renderPinDropPanel(name) {
+  document.getElementById('detail-panel').innerHTML = `
+    <div class="dp-header">
+      <div>
+        <div class="dp-title">${escapeHtml(name)}</div>
+        <div class="dp-sub">Ready to scan &middot; ${SCAN_RADIUS_KM} km radius</div>
+      </div>
+    </div>
+    <div class="dp-instruction-box">
+      <svg viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5S10.62 6.5 12 6.5s2.5 1.12 2.5 2.5S13.38 11.5 12 11.5z"/></svg>
+      <div>
+        <div class="dp-instr-title">Drop a Collection Point</div>
+        <div class="dp-instr-text">Click anywhere on the map to place your water collection point. The system will then draw a ${SCAN_RADIUS_KM} km scan circle, discover all nearby water sources, and rank the best 15 by feasibility.</div>
+      </div>
+    </div>`;
+}
+
 function renderPointSelectPanel(name, count, euHydroAvailable) {
   const euBadge = euHydroAvailable
     ? `<span class="dp-eu-badge dp-eu-ok">EU-Hydro ✓</span>`
@@ -473,8 +552,8 @@ function renderDetailPanel(src) {
     ? `<span class="dp-eu-badge dp-eu-off">Not in EU-Hydro</span>`
     : '';
 
-  const pnrr = cost.pnrr_eligible
-    ? `<span class="dp-eu-badge dp-eu-ok">PNRR eligible</span>` : '';
+  const pumping = cost.needs_pumping
+    ? `<span class="dp-eu-badge dp-eu-off">Requires pump</span>` : `<span class="dp-eu-badge dp-eu-ok">Gravity-fed</span>`;
 
   document.getElementById('detail-panel').innerHTML = `
     <div class="dp-header">
@@ -485,7 +564,7 @@ function renderDetailPanel(src) {
         </div>
         <div class="dp-sub">
           ${escapeHtml(_currentLocationName)} &middot; ${TYPE_LABEL[src.source_type] ?? src.source_type}
-          ${euBadge} ${pnrr}
+          ${euBadge} ${pumping}
         </div>
       </div>
       <button class="dp-back-btn" onclick="returnToPointSelect()">&#8592; Re-pick</button>
@@ -498,7 +577,7 @@ function renderDetailPanel(src) {
           stroke-dasharray="${dash.toFixed(2)} ${(circ - dash).toFixed(2)}" stroke-linecap="round"
           transform="rotate(-90 ${CX} ${CY})"/>
         <text x="${CX}" y="${CY - 7}" text-anchor="middle" fill="${cc}" font-size="26" font-weight="800" font-family="Outfit,sans-serif">${Math.round(fs)}</text>
-        <text x="${CX}" y="${CY + 13}" text-anchor="middle" fill="#94a3b8" font-size="11" font-family="Outfit,sans-serif">${lbl}</text>
+        <text x="${CX}" y="${CY + 13}" text-anchor="middle" fill="currentColor" opacity="0.7" font-size="11" font-family="Outfit,sans-serif">${lbl}</text>
       </svg>
       <div class="dp-feas-label">Feasibility Score</div>
     </div>
@@ -532,20 +611,14 @@ function renderDetailPanel(src) {
       <div class="dp-supply-method">${escapeHtml(supplyMethod || 'unknown')}</div>
     </div>
 
-    ${cost.total_cost_eur != null ? `
+    ${cost.pipeline_km != null ? `
     <div class="dp-section">
-      <div class="dp-section-label">Infrastructure Cost</div>
-      <div class="dp-cost-total">${fmtCost(cost.total_cost_eur)}</div>
+      <div class="dp-section-label">Pipeline</div>
       <div class="dp-cost-breakdown">
-        <div class="dp-cost-row"><span>Pipeline</span><span>${fmtCost(cost.breakdown_eur?.pipeline_eur ?? 0)}</span></div>
-        ${(cost.breakdown_eur?.pumping_eur ?? 0) > 0 ? `<div class="dp-cost-row"><span>Pumping</span><span>${fmtCost(cost.breakdown_eur.pumping_eur)}</span></div>` : ''}
-        <div class="dp-cost-row"><span>Treatment</span><span>${fmtCost(cost.breakdown_eur?.treatment_plant_eur ?? 0)}</span></div>
-        <div class="dp-cost-row"><span>Reservoir</span><span>${fmtCost(cost.breakdown_eur?.reservoir_eur ?? 0)}</span></div>
-        <div class="dp-cost-row"><span>Connections</span><span>${fmtCost(cost.breakdown_eur?.household_connections_eur ?? 0)}</span></div>
-        ${cost.pnrr_eligible ? `
-          <div class="dp-cost-row dp-cost-grant"><span>PNRR grant (85%)</span><span>− ${fmtCost(cost.pnrr_grant_eur ?? 0)}</span></div>
-          <div class="dp-cost-row dp-cost-village"><span>Village contribution</span><span>${fmtCost(cost.village_contribution_eur ?? 0)}</span></div>
-        ` : ''}
+        <div class="dp-cost-row"><span>Pipe run</span><span>${(+cost.pipeline_km).toFixed(2)} km</span></div>
+        ${cost.needs_pumping ? `<div class="dp-cost-row"><span>Feed type</span><span>Pumped (${Math.abs(cost.elevation_diff_m ?? 0).toFixed(0)} m lift)</span></div>` : `<div class="dp-cost-row"><span>Feed type</span><span>Gravity-fed</span></div>`}
+        <div class="dp-cost-row"><span>Reservoir</span><span>${cost.reservoir_m3 ?? '—'} m³</span></div>
+        <div class="dp-cost-row"><span>Supply cover</span><span>${cost.supply_covers_demand_pct ?? '?'}%</span></div>
       </div>
     </div>` : ''}
 
@@ -561,16 +634,21 @@ function returnToPointSelect() {
   if (!_scanCenter) return;
   if (_collectionMarker) { leafletMap.removeLayer(_collectionMarker); _collectionMarker = null; }
   if (_pipelineLayer)    { leafletMap.removeLayer(_pipelineLayer);    _pipelineLayer = null; }
+  if (_scanCircle)       { leafletMap.removeLayer(_scanCircle);       _scanCircle = null; }
+  if (_scanCenterMarker) { leafletMap.removeLayer(_scanCenterMarker); _scanCenterMarker = null; }
+  Object.values(_sourceMarkers).forEach(m => leafletMap.removeLayer(m));
+  _sourceMarkers = {};
+  _sources = [];
   _rankedSources = [];
   _selectedSourceId = null;
-  // Reset markers to plain blue
-  Object.values(_sourceMarkers).forEach(m => {
-    m.setIcon(L.divIcon({
-      html: `<div class="src-marker src-marker-blue"></div>`,
-      className: '', iconSize: [12, 12], iconAnchor: [6, 6],
-    }));
-  });
-  enterPointSelectMode(_currentLocationName, _sources.length, true);
+  appState = 'awaiting-pin';
+  document.getElementById('map').style.cursor = 'crosshair';
+  setMapInstruction(true, `📍 Click anywhere on the map to set your collection point`);
+  renderPinDropPanel(_currentLocationName);
+  document.getElementById('sources-count').textContent = '—';
+  document.getElementById('sources-list').innerHTML =
+    `<div class="bm-empty">Place a collection point on the map to discover water sources.</div>`;
+  document.getElementById('overview-stats').innerHTML = '';
 }
 
 /* ── BELOW-MAP RENDERING ───────────────────────── */
@@ -608,7 +686,7 @@ function renderSourcesPanel(ranked) {
     const distKm = sp.route?.terrain_adjusted_distance_km?.toFixed(2)
                 ?? (sp.distance_m / 1000).toFixed(2);
     const flowM3 = Math.round((sp.estimated_daily_flow_liters || 0) / 1000);
-    const costEur = sp.cost?.total_cost_eur;
+    const pipeKm = sp.cost?.pipeline_km != null ? (+sp.cost.pipeline_km).toFixed(1) + ' km pipe' : null;
     return `
     <div class="bm-src-row bm-src-row-clickable" id="srcc-${sp.id}"
          onclick="selectSourceById('${sp.id}')">
@@ -618,7 +696,7 @@ function renderSourcesPanel(ranked) {
         <div class="bm-src-name">${escapeHtml(sp.name)}</div>
         <div class="bm-src-meta">
           ${TYPE_LABEL[sp.source_type] ?? sp.source_type} &middot; ${distKm} km
-          ${costEur != null ? ' &middot; ' + fmtCost(costEur) : ''}
+          ${pipeKm != null ? ' &middot; ' + pipeKm : ''}
         </div>
         <div class="bm-src-bar-track"><div class="bm-src-bar-fill" style="width:${fs}%;background:${fc}"></div></div>
       </div>
@@ -650,7 +728,7 @@ function renderOverviewStats(result, ranked) {
         <span style="color:${bestCol};font-weight:800">${Math.round(best.feasibility_score ?? 0)} feasibility</span>
         <span>${(best.route?.terrain_adjusted_distance_km ?? 0).toFixed(2)} km</span>
         <span>${Math.round((best.estimated_daily_flow_liters ?? 0) / 1000)} m³/day</span>
-        ${best.cost?.total_cost_eur != null ? `<span>${fmtCost(best.cost.total_cost_eur)}</span>` : ''}
+        ${best.cost?.pipeline_km != null ? `<span>${(+best.cost.pipeline_km).toFixed(1)} km pipe</span>` : ''}
       </div>
     </div>
 
@@ -826,6 +904,64 @@ function escapeHtml(s) {
     ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c])
   );
 }
+
+/* ── FULLSCREEN MAP TOGGLE ─────────────────────── */
+const _EXPAND_ICON = `<path d="M8 3H5a2 2 0 00-2 2v3m18 0V5a2 2 0 00-2-2h-3m0 18h3a2 2 0 002-2v-3M3 16v3a2 2 0 002 2h3"/>`;
+const _SHRINK_ICON = `<path d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7"/>`;
+
+function toggleMapExpand() {
+  const isFs = document.body.classList.toggle('map-fullscreen');
+  const btn  = document.getElementById('map-expand-btn');
+  const icon = document.getElementById('map-expand-icon');
+  if (icon) icon.innerHTML = isFs ? _SHRINK_ICON : _EXPAND_ICON;
+  if (btn) {
+    btn.title = isFs ? 'Exit fullscreen (Esc)' : 'Expand map';
+    btn.classList.toggle('map-expand-btn-fs', isFs);
+    // Show "Exit fullscreen" label next to the icon while in fullscreen
+    let label = btn.querySelector('.map-expand-label');
+    if (isFs && !label) {
+      label = document.createElement('span');
+      label.className = 'map-expand-label';
+      label.textContent = 'Exit fullscreen';
+      btn.appendChild(label);
+    } else if (!isFs && label) {
+      label.remove();
+    }
+  }
+
+  // Info-dock collapse toggle (chevron in bottom-right)
+  let dockToggle = document.getElementById('fs-info-dock-toggle');
+  if (isFs && !dockToggle) {
+    dockToggle = document.createElement('button');
+    dockToggle.id = 'fs-info-dock-toggle';
+    dockToggle.className = 'fs-info-dock-toggle';
+    dockToggle.title = 'Hide info';
+    dockToggle.innerHTML = `
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="6 9 12 15 18 9"/>
+      </svg>`;
+    dockToggle.onclick = () => {
+      const hidden = document.body.classList.toggle('fs-info-hidden');
+      dockToggle.title = hidden ? 'Show info' : 'Hide info';
+    };
+    document.body.appendChild(dockToggle);
+  } else if (!isFs) {
+    dockToggle?.remove();
+    document.body.classList.remove('fs-info-hidden');
+  }
+
+  setTimeout(() => {
+    leafletMap?.invalidateSize();
+    updateRomaniaMinZoom();
+  }, 380);
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && document.body.classList.contains('map-fullscreen')) {
+    toggleMapExpand();
+  }
+});
 
 /* ── INIT ──────────────────────────────────────── */
 async function init() {
