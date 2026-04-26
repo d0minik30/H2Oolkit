@@ -59,11 +59,9 @@ function fmtNum(n)  { return Math.round(n).toLocaleString('de-DE'); }
 // rankIndex is 0-based position in the ranked list (optional).
 function srcLabel(src, rankIndex) {
   const raw = (src.name || '').trim();
-  const isUnnamed = !raw || /^unnamed\b/i.test(raw) || raw === '—';
-  if (!isUnnamed) return raw;
-  const type  = TYPE_LABEL[src.source_type] ?? 'Source';
-  const num   = src.feasibility_rank ?? (rankIndex != null ? rankIndex + 1 : '');
-  return num ? `${type} #${num}` : type;
+  if (raw && raw !== '—') return raw;
+  const type = TYPE_LABEL[src.source_type] ?? 'Source';
+  return `Unnamed ${type}`;
 }
 
 function haversineKm(lat1, lon1, lat2, lon2) {
