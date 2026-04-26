@@ -186,7 +186,7 @@ async function flyToLocation(lat, lon, name) {
   const flyDelay = wasLanding ? 480 : 0;
   setTimeout(() => {
     leafletMap.invalidateSize();
-    leafletMap.flyTo([_scanCenter.lat, _scanCenter.lon], 12, { duration: 0.9 });
+    leafletMap.flyTo([_scanCenter.lat, _scanCenter.lon], 14, { duration: 0.9 });
   }, flyDelay);
 
   appState = 'awaiting-pin';
@@ -206,6 +206,7 @@ async function startAnalysisFromPin(lat, lon) {
   setMapInstruction(false);
 
   drawScanCircle();
+  setTimeout(() => setCollectionMarker(lat, lon), 400);
 
   renderLoadingPanel(`Scanning water sources within ${SCAN_RADIUS_KM} km of ${_currentLocationName}…`);
   document.getElementById('sources-count').textContent = 'scanning…';
@@ -307,7 +308,6 @@ async function runFeasibilityAnalysis(lat, lon) {
   appState = 'analyzing';
   document.getElementById('map').style.cursor = '';
   setMapInstruction(false);
-  setCollectionMarker(lat, lon);
 
   renderLoadingPanel('Calculating feasibility for every source…\n(may take 10–30 s — fetching satellite & EU-Hydro data)');
   document.getElementById('sources-count').textContent = 'analysing…';
@@ -593,6 +593,20 @@ function renderDetailPanel(src) {
         <div class="dp-cost-row"><span>Supply cover</span><span>${cost.supply_covers_demand_pct ?? '?'}%</span></div>
       </div>
     </div>` : ''}
+
+    <div class="dp-section">
+      <div class="dp-section-label">Project Dimensions</div>
+      <div class="dp-cost-breakdown">
+        <div class="dp-cost-row"><span>Straight-line distance</span><span>${((route.straight_line_distance_m ?? src.distance_m) / 1000).toFixed(2)} km</span></div>
+        <div class="dp-cost-row"><span>Terrain-adjusted route</span><span>${distKm.toFixed(2)} km</span></div>
+        <div class="dp-cost-row"><span>Terrain factor</span><span>&times;${route.terrain_factor ?? 1.25}</span></div>
+        <div class="dp-cost-row"><span>Slope gradient</span><span>${(route.slope_pct ?? 0).toFixed(1)}%</span></div>
+        <div class="dp-cost-row"><span>Elevation difference</span><span>${elevDiff > 0 ? '+' : ''}${Math.round(elevDiff)} m</span></div>
+        <div class="dp-cost-row"><span>Recommended pipe ⌀</span><span>${route.pipe_diameter_mm ?? '—'} mm</span></div>
+        <div class="dp-cost-row"><span>Pressure class</span><span>${route.pressure_class ?? '—'}</span></div>
+        <div class="dp-cost-row"><span>Reservoir volume</span><span>${cost.reservoir_m3 ?? '—'} m³</span></div>
+      </div>
+    </div>
 
     ${src.recommendation ? `
     <div class="dp-section">
