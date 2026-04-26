@@ -271,8 +271,8 @@ function addSourceMarkers(sources) {
 
   sources.forEach(src => {
     const icon = L.divIcon({
-      html: `<div class="src-marker src-marker-blue"></div>`,
-      className: '', iconSize: [12, 12], iconAnchor: [6, 6], popupAnchor: [0, -6],
+      html: `<div class="src-marker-hit"><div class="src-marker src-marker-blue"></div></div>`,
+      className: '', iconSize: [32, 32], iconAnchor: [16, 16], popupAnchor: [0, -10],
     });
     const m = L.marker([src.lat, src.lon], { icon, zIndexOffset: 400 }).addTo(leafletMap);
     m.bindTooltip(
@@ -301,6 +301,16 @@ function enterPointSelectMode(name, count, euHydroAvailable) {
 function isInsideScanCircle(lat, lon) {
   if (!_scanCenter) return false;
   return haversineKm(_scanCenter.lat, _scanCenter.lon, lat, lon) <= SCAN_RADIUS_KM;
+}
+
+// Drop sources outside the scan circle, then drop low-feasibility ones unless
+// keeping them is needed to clear a minimum-result floor (≥ 20 inside).
+function filterVisibleSources(ranked) {
+  const inside = ranked.filter(s => isInsideScanCircle(s.lat, s.lon));
+  if (inside.length >= 20) {
+    return inside.filter(s => (s.feasibility_score ?? 0) > 50);
+  }
+  return inside;
 }
 
 function onMapMouseMove(e) {
@@ -337,7 +347,7 @@ async function runFeasibilityAnalysis(lat, lon) {
       name:             _currentLocationName,
     });
 
-    _rankedSources = result.ranked_sources || [];
+    _rankedSources = filterVisibleSources(result.ranked_sources || []);
     appState = 'analyzed';
 
     if (_rankedSources.length === 0) {
@@ -377,8 +387,18 @@ function recolorSourceMarkersByFeasibility(ranked) {
     const m = _sourceMarkers[String(src.id)];
     if (!m) return;
     const col = feasColor(src.feasibility_score ?? 0);
-    const html = `<div class="src-marker" style="background:${col}"></div>`;
-    m.setIcon(L.divIcon({ html, className: '', iconSize: [12, 12], iconAnchor: [6, 6] }));
+    const html = `<div class="src-marker-hit"><div class="src-marker" style="background:${col}"></div></div>`;
+    m.setIcon(L.divIcon({ html, className: '', iconSize: [32, 32], iconAnchor: [16, 16] }));
+  });
+}
+
+function updateSourceMarkerActiveState() {
+  Object.entries(_sourceMarkers).forEach(([id, m]) => {
+    const el = m.getElement();
+    if (!el) return;
+    const hit = el.querySelector('.src-marker-hit');
+    if (!hit) return;
+    hit.classList.toggle('src-marker-hit-active', id === _selectedSourceId);
   });
 }
 
@@ -388,7 +408,51 @@ function selectSourceById(id) {
   if (!src) return;
   drawPipeline(src);
   renderDetailPanel(src);
+  updateSourceMarkerActiveState();
 }
+
+function navigateSourceByDirection(dx, dy) {
+  if (appState !== 'analyzed' || !_rankedSources.length) return;
+  const current = _rankedSources.find(s => String(s.id) === _selectedSourceId);
+  if (!current) {
+    selectSourceById(String(_rankedSources[0].id));
+    return;
+  }
+  const curPt = leafletMap.latLngToContainerPoint([current.lat, current.lon]);
+  let best = null, bestScore = -Infinity;
+  for (const src of _rankedSources) {
+    if (String(src.id) === _selectedSourceId) continue;
+    const pt = leafletMap.latLngToContainerPoint([src.lat, src.lon]);
+    const px = pt.x - curPt.x, py = pt.y - curPt.y;
+    // along: signed distance projected onto the arrow direction (must be positive
+    // for the candidate to count as "in that direction"). perp: how far it strays
+    // from the axis. Score favours larger along, smaller perp, smaller total.
+    const along = px * dx + py * dy;
+    if (along <= 0) continue;
+    const perp = Math.abs(px * dy - py * dx);
+    if (perp > along) continue; // outside ±45° cone
+    const dist = Math.hypot(px, py);
+    const score = along / (dist + perp * 1.5 + 1);
+    if (score > bestScore) { bestScore = score; best = src; }
+  }
+  if (best) selectSourceById(String(best.id));
+}
+
+document.addEventListener('keydown', e => {
+  if (appState !== 'analyzed') return;
+  if (e.target.matches('input, textarea, [contenteditable="true"]')) return;
+  let dx = 0, dy = 0;
+  switch (e.key) {
+    case 'ArrowLeft':  dx = -1; break;
+    case 'ArrowRight': dx =  1; break;
+    case 'ArrowUp':    dy = -1; break;
+    case 'ArrowDown':  dy =  1; break;
+    default: return;
+  }
+  e.preventDefault();
+  e.stopPropagation();
+  navigateSourceByDirection(dx, dy);
+}, true);
 
 function drawPipeline(src) {
   if (_pipelineLayer) { leafletMap.removeLayer(_pipelineLayer); _pipelineLayer = null; }
