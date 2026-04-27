@@ -226,11 +226,12 @@ def _estimate_daily_flow(
     formula (recharge × catchment × runoff × safety factor).
     """
     proxy_catchment_km2 = {
-        "river":  80.0,
-        "stream":  8.0,
-        "lake":   40.0,
-        "spring":  1.5,
-        "well":    0.3,
+        "river":     80.0,
+        "stream":     8.0,
+        "lake":      40.0,
+        "reservoir": 60.0,
+        "spring":     1.5,
+        "well":       0.3,
     }.get(source_type, 1.0)
 
     catchment_m2 = proxy_catchment_km2 * 1_000_000

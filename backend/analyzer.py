@@ -8,7 +8,13 @@ from .water_reserve import estimate_water_reserve
 from .route_calculator import calculate_pipeline_route, haversine_m
 from .elevation import get_elevation, get_elevations_batch
 from .source_ranker import rank_water_sources
-from .eu_hydro import annotate_osm_sources_with_eu_hydro, find_unlinked_springs, get_gee_satellite_data
+from .satellite import get_gee_satellite_data
+from .copernicus_hydro import (
+    query_eu_hydro_sources,
+    get_distance_to_nearest_river_m,
+    annotate_sources_eu_hydro_link,
+)
+from .source_merger import merge_sources
 
 
 def analyze_spring_location(
@@ -160,9 +166,12 @@ def _calculate_feasibility_score(
     dist_km = route["terrain_adjusted_distance_km"]
     score_distance = max(0, 100 - (dist_km - 1) * 20) if dist_km > 1 else 100
 
-    # Slope score: lower slope is better for construction
+    # Slope score: lower slope is better for construction.
+    # Coefficient 1.2 (not 2) — Carpathian mountain pipelines routinely run
+    # on 20-40 % slopes; the old coefficient 2 unfairly penalised close-but-high
+    # sources that are actually excellent gravity-feed candidates.
     slope_pct = route["slope_pct"]
-    score_slope = max(0, 100 - slope_pct * 2)
+    score_slope = max(0, 100 - slope_pct * 1.2)
 
     # Elevation score: above town level is best (gravity feed)
     elev_diff = route["elevation_difference_m"]
@@ -261,42 +270,16 @@ def analyze_village_water_supply(
     weather = get_historical_precipitation(sl, so, years=10)
 
     # 3. Discover all OSM water bodies
-    sources = search_all_water_sources(sl, so, radius_m=sr)
+    osm_sources = search_all_water_sources(sl, so, radius_m=sr)
 
-    # 4. Annotate OSM sources with EU-Hydro linkage data
-    sources = annotate_osm_sources_with_eu_hydro(
-        sources,
-        lat=sl,
-        lon=so,
-        radius_m=sr,
-    )
+    # 4. Discover EU-Hydro lake/reservoir sources from local GPKG
+    eu_hydro_sources = query_eu_hydro_sources(sl, so, radius_m=sr)
 
-    # 5. Fetch EU-Hydro spring sources not already present in OSM
-    eu_hydro_result = find_unlinked_springs(sl, so, sr)
-    for sp in eu_hydro_result.get("unlinked", []):
-        already_present = any(
-            abs(s["lat"] - sp["lat"]) < 0.0001 and
-            abs(s["lon"] - sp["lon"]) < 0.0001
-            for s in sources
-        )
-        if not already_present:
-            sources.append({
-                "id": f"eu_hydro_{sp['eu_hydro_id']}",
-                "osm_type": "eu_hydro",
-                "lat": sp["lat"],
-                "lon": sp["lon"],
-                "elevation": None,
-                "name": sp["name"],
-                "source_type": "spring",
-                "distance_m": round(haversine_m(sl, so, sp["lat"], sp["lon"]), 1),
-                "drinking_water": "unknown",
-                "intermittent": False,
-                "estimated_daily_flow_liters": 3_000,
-                "reliability_base": 0.75,
-                "eu_hydro_linked": False,
-                "eu_hydro_note": "Source from EU-Hydro database, not in OSM.",
-                "tags": sp.get("raw_properties", {}),
-            })
+    # 5. Merge OSM + EU-Hydro, deduplicating overlapping records
+    sources = merge_sources(osm_sources, eu_hydro_sources)
+
+    # 6. Annotate unmatched OSM sources with official water-body proximity flag
+    sources = annotate_sources_eu_hydro_link(sources)
 
     if not sources:
         return {
@@ -313,7 +296,7 @@ def analyze_village_water_supply(
             ),
         }
 
-    # 6. Batch elevation lookup for all sources (one API call)
+    # 7. Batch elevation lookup for all sources (one API call)
     points = [{"lat": s["lat"], "lon": s["lon"]} for s in sources]
     elevations = get_elevations_batch(points)
     for source, elev in zip(sources, elevations):
@@ -329,14 +312,21 @@ def analyze_village_water_supply(
     # Keep only sources inside the scan circle (from the collection point)
     sources = [s for s in sources if s["distance_m"] <= sr]
 
-    # 7. Fetch GEE satellite data for each source and calculate spring probability
+    # 8. Fetch GEE satellite data for each source and calculate spring probability
     import logging
     log_analyzer = logging.getLogger('h2oolkit')
     for source in sources:
         try:
             log_analyzer.debug(f"Fetching satellite data for source: {source.get('name', 'unknown')}")
             sat_data = get_gee_satellite_data(source["lat"], source["lon"])
-            
+
+            # Override distance_to_river_m with accurate local GPKG measurement
+            local_river_dist = get_distance_to_nearest_river_m(
+                source["lat"], source["lon"]
+            )
+            if local_river_dist is not None:
+                sat_data["distance_to_river_m"] = local_river_dist
+
             # Calculate spring probability based on satellite data
             spring_prob = calculate_spring_probability(
                 ndvi_dry=sat_data["ndvi_dry"],
@@ -348,6 +338,13 @@ def analyze_village_water_supply(
                 distance_to_river_m=sat_data["distance_to_river_m"],
             )
             
+            # EU-Hydro lake/reservoir sources are confirmed water bodies —
+            # the spring detector underscores them (it penalises high JRC values
+            # which indicate permanent water, not springs). Use a fixed high value.
+            if source.get("data_source") == "eu_hydro" and \
+               source.get("source_type") in ("lake", "reservoir"):
+                spring_prob["spring_probability"] = 0.85
+
             # Store satellite data and spring analysis in source for frontend
             source["satellite_data"] = sat_data
             source["spring_analysis"] = spring_prob
@@ -369,7 +366,7 @@ def analyze_village_water_supply(
             source["spring_probability"] = 0.3
             source["gee_available"] = False
 
-    # 8. Rank by supply efficiency (now includes spring probability component)
+    # 9. Rank by supply efficiency (now includes spring probability component)
     ranked = rank_water_sources(sources, village, weather)
 
     # Add feasibility score to each ranked source

@@ -54,6 +54,13 @@ function feasLabel(score) {
 }
 
 function fmtNum(n)  { return Math.round(n).toLocaleString('de-DE'); }
+// Format a flow value in m³/d — shows one decimal when < 10 to avoid showing "0"
+function fmtFlow(litersPerDay) {
+  const m3 = (litersPerDay || 0) / 1000;
+  if (m3 >= 10)  return Math.round(m3).toLocaleString('de-DE');
+  if (m3 >= 0.1) return m3.toFixed(1);
+  return '< 0.1';
+}
 
 // Returns a human-readable label for a source, replacing generic "Unnamed …" strings.
 // rankIndex is 0-based position in the ranked list (optional).
@@ -473,8 +480,15 @@ function drawPipeline(src) {
   if (_pipelineLayer) { leafletMap.removeLayer(_pipelineLayer); _pipelineLayer = null; }
   if (!_collectionMarker) return;
   const cp = _collectionMarker.getLatLng();
+
+  // Use the real OSRM route geometry if available, otherwise fall back to straight line
+  const geometry = src.route?.route_geometry;
+  const latlngs = (geometry && geometry.length > 1)
+    ? geometry                                   // [[lat,lon], ...] from OSRM
+    : [[src.lat, src.lon], [cp.lat, cp.lng]];    // straight-line fallback
+
   _pipelineLayer = L.polyline(
-    [[src.lat, src.lon], [cp.lat, cp.lng]],
+    latlngs,
     { color: '#2563eb', weight: 3, dashArray: '10 6', opacity: 0.9, interactive: false }
   ).addTo(leafletMap);
 }
@@ -612,7 +626,7 @@ function renderDetailPanel(src) {
   const distKm  = route.terrain_adjusted_distance_km ?? (src.distance_m / 1000);
   const elevDiff = route.elevation_difference_m ?? 0;
   const supplyMethod = (src.supply_method || '').replace(/_/g, ' ');
-  const flowM3 = Math.round((src.estimated_daily_flow_liters || 0) / 1000);
+  const flowM3 = fmtFlow(src.estimated_daily_flow_liters);
 
   const euBadge = src.eu_hydro_linked === true
     ? `<span class="dp-eu-badge dp-eu-ok">EU-Hydro linked</span>`
@@ -1047,7 +1061,7 @@ async function downloadReport() {
       const verd  = recVerdict(fs);
       const distKm = (route.terrain_adjusted_distance_km ?? (src.distance_m / 1000)).toFixed(2);
       const elev   = Math.round(route.elevation_difference_m ?? 0);
-      const flowM3 = Math.round((src.estimated_daily_flow_liters || 0) / 1000);
+      const flowM3 = fmtFlow(src.estimated_daily_flow_liters);
 
       // Build only metrics that have real values
       const rawMetrics = [
@@ -1282,7 +1296,7 @@ function renderSourcesPanel(ranked) {
     const fc   = feasColor(fs);
     const distKm = sp.route?.terrain_adjusted_distance_km?.toFixed(2)
                 ?? (sp.distance_m / 1000).toFixed(2);
-    const flowM3 = Math.round((sp.estimated_daily_flow_liters || 0) / 1000);
+    const flowM3 = fmtFlow(sp.estimated_daily_flow_liters);
     const pipeKm = sp.cost?.pipeline_km != null ? (+sp.cost.pipeline_km).toFixed(1) + ' km pipe' : null;
     return `
     <div class="bm-src-row bm-src-row-clickable" id="srcc-${sp.id}"
@@ -1352,7 +1366,7 @@ function renderOverviewStats(result, ranked) {
       <div class="ov-best-details">
         <span style="color:${bestCol};font-weight:800">${Math.round(best.feasibility_score ?? 0)} feasibility</span>
         <span>${(best.route?.terrain_adjusted_distance_km ?? 0).toFixed(2)} km</span>
-        <span>${Math.round((best.estimated_daily_flow_liters ?? 0) / 1000)} m³/day</span>
+        <span>${fmtFlow(best.estimated_daily_flow_liters)} m³/day</span>
         ${best.cost?.pipeline_km != null ? `<span>${(+best.cost.pipeline_km).toFixed(1)} km pipe</span>` : ''}
       </div>
     </div>
@@ -1375,7 +1389,7 @@ function renderOverviewStats(result, ranked) {
       </div>
 
       <div class="ov-metric-card">
-        <div class="ov-metric-label">Total Daily Flow</div>
+        <div class="ov-metric-label">Best Source Est. Flow</div>
         <div class="ov-metric-stage">
           <div class="ov-tap-stage">
             ${tapSvg}
@@ -1383,7 +1397,7 @@ function renderOverviewStats(result, ranked) {
             <div class="ov-tap-drop"></div>
             <div class="ov-tap-puddle"></div>
           </div>
-          <div class="ov-tap-value">${fmtNum(totalFlowM3)}<span>m³/d</span></div>
+          <div class="ov-tap-value">${fmtFlow(best.estimated_daily_flow_liters)}<span>m³/d</span></div>
         </div>
       </div>
 

@@ -54,7 +54,14 @@ def get_historical_precipitation(lat: float, lon: float, years: int = 10) -> dic
     dry_season_mm = _seasonal_mean(time_labels, precip_mm, months=[6, 7, 8])
     wet_season_mm = _seasonal_mean(time_labels, precip_mm, months=[3, 4, 5])
 
-    recharge_mm = max(0.0, (mean_annual_precip - mean_annual_et0) * 0.25)
+    # Groundwater recharge: take the larger of
+    #   (a) 10 % of precipitation  — physical minimum for any vegetated terrain
+    #   (b) 25 % of the net water balance when it is positive
+    # The pure net-balance formula gives 0 whenever ET0 >= precip, which is
+    # common in Romanian lowlands (ET0 650–800 mm vs precip 500–700 mm) and
+    # produces absurd flow estimates of 100 L/day for all sources.
+    net_balance = mean_annual_precip - mean_annual_et0
+    recharge_mm = max(mean_annual_precip * 0.10, net_balance * 0.25)
 
     if mean_annual_precip > 800:
         recommendation = "High precipitation zone — strong groundwater recharge potential."

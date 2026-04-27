@@ -74,3 +74,9 @@ desktop.ini
 
 # Misc local project files
 .claude/
+
+# Large local data files — never commit to git
+backend/data/
+*.gpkg
+*.gdb
+

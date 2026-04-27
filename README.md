@@ -36,6 +36,29 @@ H2Oolkit/
 
 ---
 
+## Data Setup (required)
+
+H2Oolkit uses the **EU-Hydro River Network Database** to cross-reference water sources
+against official European hydrological data. This file is **not included in the repository**
+(it is 354 MB — too large for git) and must be downloaded separately before first run.
+
+### Download steps
+
+1. Go to [Copernicus Land Monitoring Service — EU-Hydro](https://land.copernicus.eu/en/products/eu-hydro/eu-hydro-river-network-database)
+2. Select **Romania** as the country/region filter
+3. Choose format **GeoPackage (GPKG)** and projection **EPSG 4326**
+4. Download and place the file at:
+   ```
+   backend/data/EU-Hydro.gpkg
+   ```
+   Create the `backend/data/` folder if it does not exist.
+
+> **Without this file** the app still works — OSM water sources and satellite analysis
+> remain fully functional. Only the EU-Hydro lake/reservoir sources and official
+> water-body cross-referencing are skipped, and the log will show a warning.
+
+---
+
 ## Quick Start
 
 ### Windows
@@ -53,10 +76,12 @@ source venv/bin/activate
 pip install -r backend/requirements.txt
 
 # 3. Start the backend (port 5000)
-python -m backend.server
+venv\Scripts\python.exe -m backend.server     # port 5000
+//python -m backend.server
 
 # 4. In a separate terminal, start the frontend (port 8000)
-python -m http.server 8000
+npx serve .
+//python -m http.server 8000
 ```
 
 Then open <http://localhost:8000>.

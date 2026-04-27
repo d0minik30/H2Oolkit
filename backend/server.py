@@ -19,7 +19,8 @@ Endpoints
                     name: str                         # optional
                 }
                 Returns ranked sources with feasibility scores.
-    GET  /api/eu-hydro/unlinked-springs?lat=&lon=&radius_m=
+    GET  /api/eu-hydro/status
+                Returns whether the local EU-Hydro GPKG file is loaded.
 
 Run from the project root:
     py -m backend.server
@@ -35,10 +36,12 @@ from flask_cors import CORS
 
 from .analyzer import analyze_village_water_supply
 from .osm import search_all_water_sources, _haversine_m
-from .eu_hydro import (
-    annotate_osm_sources_with_eu_hydro,
-    find_unlinked_springs,
+from .copernicus_hydro import (
+    query_eu_hydro_sources,
+    annotate_sources_eu_hydro_link,
+    is_available as eu_hydro_gpkg_available,
 )
+from .source_merger import merge_sources
 
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s] %(levelname)s %(message)s')
 log = logging.getLogger('h2oolkit')
@@ -75,43 +78,23 @@ def water_sources():
         abort(400, description='lat and lon query parameters are required')
     radius_m = int(request.args.get('radius_m', 10_000))
 
-    log.info(f'Sources @ {lat:.4f},{lon:.4f} r={radius_m}m')
+    log.info('Sources @ %.4f,%.4f r=%dm', lat, lon, radius_m)
 
-    sources = search_all_water_sources(lat, lon, radius_m)
-    sources = annotate_osm_sources_with_eu_hydro(sources, lat=lat, lon=lon, radius_m=radius_m)
+    # OSM sources
+    osm_sources = search_all_water_sources(lat, lon, radius_m)
 
-    eu_result = find_unlinked_springs(lat, lon, radius_m)
-    for sp in eu_result.get('unlinked', []):
-        already_present = any(
-            abs(s['lat'] - sp['lat']) < 0.0001 and abs(s['lon'] - sp['lon']) < 0.0001
-            for s in sources
-        )
-        if not already_present:
-            sources.append({
-                'id': f"eu_hydro_{sp['eu_hydro_id']}",
-                'osm_type': 'eu_hydro',
-                'lat': sp['lat'],
-                'lon': sp['lon'],
-                'elevation': None,
-                'name': sp.get('name') or 'EU-Hydro spring',
-                'source_type': 'spring',
-                'distance_m': round(_haversine_m(lat, lon, sp['lat'], sp['lon']), 1),
-                'drinking_water': 'unknown',
-                'intermittent': False,
-                'estimated_daily_flow_liters': 3000,
-                'reliability_base': 0.75,
-                'tags': sp.get('raw_properties', {}),
-                'eu_hydro_linked': False,
-                'eu_hydro_note': 'From EU-Hydro database, not in OSM.',
-            })
+    # EU-Hydro GPKG lake/reservoir sources
+    eu_hydro_srcs = query_eu_hydro_sources(lat, lon, radius_m)
 
-    # Prioritise higher-quality source types; drop ditches and generic waterway nodes
-    # that are very unlikely to serve as a village water supply.
-    _TYPE_PRIORITY = {'spring': 0, 'well': 1, 'lake': 2, 'river': 3, 'stream': 4}
+    # Merge — deduplicates overlapping OSM and EU-Hydro records
+    sources = merge_sources(osm_sources, eu_hydro_srcs)
+
+    # Annotate unmatched OSM sources with official water-body proximity
+    sources = annotate_sources_eu_hydro_link(sources)
+
+    _TYPE_PRIORITY = {'spring': 0, 'well': 1, 'lake': 2, 'reservoir': 2, 'river': 3, 'stream': 4}
     sources = [s for s in sources if s.get('source_type') in _TYPE_PRIORITY]
     sources.sort(key=lambda s: (_TYPE_PRIORITY.get(s['source_type'], 99), s['distance_m']))
-
-    # Cap the initial scan display at 15 sources — matches the analysis pipeline limit.
     sources = sources[:15]
 
     return jsonify({
@@ -120,7 +103,7 @@ def water_sources():
         'radius_m': radius_m,
         'sources': sources,
         'count': len(sources),
-        'eu_hydro_available': eu_result.get('available', False),
+        'eu_hydro_available': eu_hydro_gpkg_available(),
     })
 
 
@@ -197,19 +180,19 @@ def analyze_site():
     return jsonify(result)
 
 
-# ── EU-Hydro raw query (kept for diagnostics) ─────────────────────────────────
+# ── EU-Hydro GPKG status (diagnostic) ────────────────────────────────────────
 
-@app.get('/api/eu-hydro/unlinked-springs')
-def eu_hydro_unlinked_springs():
-    try:
-        lat = float(request.args['lat'])
-        lon = float(request.args['lon'])
-    except (KeyError, ValueError):
-        abort(400, description='lat and lon query parameters are required')
-    radius_m = int(request.args.get('radius_m', 10_000))
-
-    result = find_unlinked_springs(lat, lon, radius_m)
-    return jsonify({'lat': lat, 'lon': lon, 'radius_m': radius_m, **result})
+@app.get('/api/eu-hydro/status')
+def eu_hydro_status():
+    """Returns whether the local EU-Hydro GPKG is loaded and ready."""
+    from .copernicus_hydro import _load_lakes, _load_rivers
+    lakes  = _load_lakes()
+    rivers = _load_rivers()
+    return jsonify({
+        'gpkg_available': eu_hydro_gpkg_available(),
+        'lakes_loaded':   isinstance(lakes,  object) and lakes  is not False,
+        'rivers_loaded':  isinstance(rivers, object) and rivers is not False,
+    })
 
 
 # ── Error handlers ────────────────────────────────────────────────────────────

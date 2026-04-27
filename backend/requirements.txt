@@ -3,3 +3,5 @@ flask-cors>=4.0
 requests>=2.31
 numpy>=1.24
 earthengine-api>=0.1.380
+geopandas>=0.14
+shapely>=2.0

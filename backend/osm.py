@@ -9,7 +9,7 @@ _log = logging.getLogger("h2oolkit.osm")
 OVERPASS_URL = "https://overpass-api.de/api/interpreter"
 _TIMEOUT = 40
 _MAX_RETRIES = 2
-_HEADERS = {"User-Agent": "H2Oolkit/1.0 (CASSINI hackathon; contact: marcudominik@gmail.com)"}
+_HEADERS = {"User-Agent": "H2Oolkit/1.0 (https://github.com/m1n1k30/H2Oolkit)"}
 
 # Maps OSM tag combinations to a normalised source_type string
 _SOURCE_TYPE_RULES = [
@@ -200,7 +200,7 @@ def _parse_water_source(element: dict, ref_lat: float, ref_lon: float) -> dict |
         "estimated_daily_flow_liters": SOURCE_FLOW_ESTIMATES.get(source_type, 1_000),
         "reliability_base": SOURCE_RELIABILITY.get(source_type, 0.50),
         "tags": tags,
-        "eu_hydro_linked": None,   # filled by eu_hydro.annotate_osm_sources_with_eu_hydro()
+        "eu_hydro_linked": None,   # filled by copernicus_hydro.annotate_sources_eu_hydro_link()
         "eu_hydro_note":   None,
     }
 
