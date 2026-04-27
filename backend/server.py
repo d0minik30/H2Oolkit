@@ -49,6 +49,12 @@ log = logging.getLogger('h2oolkit')
 app = Flask(__name__)
 CORS(app)
 
+# Pre-load the EU-Hydro GPKG at startup so the first user request is not
+# delayed by the cold 5-second file-read.
+from .copernicus_hydro import _load_lakes, _load_rivers
+_load_lakes()
+_load_rivers()
+
 
 # ── Health ────────────────────────────────────────────────────────────────────
 
@@ -83,17 +89,23 @@ def water_sources():
     # OSM sources
     osm_sources = search_all_water_sources(lat, lon, radius_m)
 
+    _TYPE_PRIORITY = {'spring': 0, 'well': 1, 'lake': 2, 'reservoir': 2, 'river': 3, 'stream': 4}
+
+    # Keep only usable types, sort by priority + distance, cap early so
+    # EU-Hydro annotation only runs on the candidates we actually return.
+    osm_sources = [s for s in osm_sources if s.get('source_type') in _TYPE_PRIORITY]
+    osm_sources.sort(key=lambda s: (_TYPE_PRIORITY.get(s['source_type'], 99), s['distance_m']))
+    osm_sources = osm_sources[:30]   # 2× buffer before dedup
+
     # EU-Hydro GPKG lake/reservoir sources
     eu_hydro_srcs = query_eu_hydro_sources(lat, lon, radius_m)
 
     # Merge — deduplicates overlapping OSM and EU-Hydro records
     sources = merge_sources(osm_sources, eu_hydro_srcs)
 
-    # Annotate unmatched OSM sources with official water-body proximity
+    # Annotate only the ~30 candidates that survived
     sources = annotate_sources_eu_hydro_link(sources)
 
-    _TYPE_PRIORITY = {'spring': 0, 'well': 1, 'lake': 2, 'reservoir': 2, 'river': 3, 'stream': 4}
-    sources = [s for s in sources if s.get('source_type') in _TYPE_PRIORITY]
     sources.sort(key=lambda s: (_TYPE_PRIORITY.get(s['source_type'], 99), s['distance_m']))
     sources = sources[:15]
 

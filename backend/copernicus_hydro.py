@@ -126,11 +126,14 @@ def query_eu_hydro_sources(lat: float, lon: float, radius_m: int) -> list:
 
         results = []
         for _, row in intersecting.iterrows():
-            clat = float(row["centroid_lat"])
-            clon = float(row["centroid_lon"])
-            dist = _haversine_m(lat, lon, clat, clon)
+            clat       = float(row["centroid_lat"])
+            clon       = float(row["centroid_lon"])
+            dist       = _haversine_m(lat, lon, clat, clon)
+            area_m2    = float(row.get("AREA")     or 0)
+            altitude   = float(row.get("ALTITUDE") or 0)
+            inspire_id = str(row.get("INSPIRE_ID") or row.get("OBJECTID") or "")
 
-            raw_name = str(row.get("NAM") or "")
+            raw_name = str(row.get("NAM")   or "")
             lakid    = str(row.get("LAKID") or "")
             _INVALID = {"UNK", "NA", "NAN", ""}
             if raw_name.upper() not in _INVALID:
@@ -149,10 +152,6 @@ def query_eu_hydro_sources(lat: float, lon: float, radius_m: int) -> list:
                 source_type      = "lake"
                 reliability_base = 0.80 if lke_type == "N" else 0.70
                 type_label       = "lake"
-
-            area_m2    = float(row.get("AREA")     or 0)
-            altitude   = float(row.get("ALTITUDE") or 0)
-            inspire_id = str(row.get("INSPIRE_ID") or row.get("OBJECTID") or "")
 
             results.append({
                 "id":                         f"eu_hydro_{inspire_id}",

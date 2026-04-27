@@ -480,15 +480,9 @@ function drawPipeline(src) {
   if (_pipelineLayer) { leafletMap.removeLayer(_pipelineLayer); _pipelineLayer = null; }
   if (!_collectionMarker) return;
   const cp = _collectionMarker.getLatLng();
-
-  // Use the real OSRM route geometry if available, otherwise fall back to straight line
-  const geometry = src.route?.route_geometry;
-  const latlngs = (geometry && geometry.length > 1)
-    ? geometry                                   // [[lat,lon], ...] from OSRM
-    : [[src.lat, src.lon], [cp.lat, cp.lng]];    // straight-line fallback
-
+  // Pipelines are buried cross-terrain — always draw as a straight line
   _pipelineLayer = L.polyline(
-    latlngs,
+    [[src.lat, src.lon], [cp.lat, cp.lng]],
     { color: '#2563eb', weight: 3, dashArray: '10 6', opacity: 0.9, interactive: false }
   ).addTo(leafletMap);
 }

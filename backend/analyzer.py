@@ -1,5 +1,6 @@
 """Master orchestrator: combines all processing modules into a single analysis result."""
 
+import logging
 from .weather import get_historical_precipitation
 from .spring_detector import calculate_spring_probability
 from .osm import search_osm_springs, search_osm_villages, search_all_water_sources
@@ -269,8 +270,15 @@ def analyze_village_water_supply(
     # 2. Regional precipitation (single call — all sources in radius share it)
     weather = get_historical_precipitation(sl, so, years=10)
 
-    # 3. Discover all OSM water bodies
-    osm_sources = search_all_water_sources(sl, so, radius_m=sr)
+    # 3. Discover OSM water bodies, keep usable types only, cap early so
+    #    EU-Hydro annotation only runs on the candidates we will actually analyse.
+    _USABLE_TYPES = {'spring', 'well', 'lake', 'reservoir', 'river', 'stream'}
+    osm_sources = [
+        s for s in search_all_water_sources(sl, so, radius_m=sr)
+        if s.get('source_type') in _USABLE_TYPES
+    ]
+    osm_sources.sort(key=lambda s: s['distance_m'])
+    osm_sources = osm_sources[:30]   # 2× buffer; dedup + ranker selects the best 15
 
     # 4. Discover EU-Hydro lake/reservoir sources from local GPKG
     eu_hydro_sources = query_eu_hydro_sources(sl, so, radius_m=sr)
@@ -278,7 +286,7 @@ def analyze_village_water_supply(
     # 5. Merge OSM + EU-Hydro, deduplicating overlapping records
     sources = merge_sources(osm_sources, eu_hydro_sources)
 
-    # 6. Annotate unmatched OSM sources with official water-body proximity flag
+    # 6. Annotate with official water-body proximity (~30 candidates only)
     sources = annotate_sources_eu_hydro_link(sources)
 
     if not sources:
@@ -312,59 +320,56 @@ def analyze_village_water_supply(
     # Keep only sources inside the scan circle (from the collection point)
     sources = [s for s in sources if s["distance_m"] <= sr]
 
-    # 8. Fetch GEE satellite data for each source and calculate spring probability
-    import logging
+    # 8. GEE satellite data — fetched ONCE for the search centre, reused for
+    #    every source.  The old approach called GEE once per source, causing
+    #    2-7 minute waits (15 sources x 6 serial .getInfo() round-trips each).
+    #    NDVI, soil moisture and JRC vary gradually over a 7 km radius, so one
+    #    centre reading is accurate enough.  Per-source overrides are applied
+    #    below for elevation (Open-Topo-Data batch) and river distance (GPKG).
     log_analyzer = logging.getLogger('h2oolkit')
+    try:
+        center_sat = get_gee_satellite_data(sl, so)
+        log_analyzer.info(
+            "GEE satellite data fetched for centre (%.4f,%.4f) available=%s",
+            sl, so, center_sat["available"],
+        )
+    except Exception as exc:
+        log_analyzer.warning("GEE centre fetch failed, using defaults: %s", exc)
+        center_sat = {
+            "ndvi_dry": 0.35, "ndvi_wet": 0.50,
+            "soil_moisture_summer": 0.40, "jrc_occurrence": 35.0,
+            "slope_degrees": 8.0, "elevation": village_elevation,
+            "distance_to_river_m": 500.0, "catchment_area_km2": 5.0,
+            "available": False,
+        }
+
     for source in sources:
-        try:
-            log_analyzer.debug(f"Fetching satellite data for source: {source.get('name', 'unknown')}")
-            sat_data = get_gee_satellite_data(source["lat"], source["lon"])
+        sat_data = dict(center_sat)
+        sat_data["elevation"] = source.get("elevation") or center_sat["elevation"]
 
-            # Override distance_to_river_m with accurate local GPKG measurement
-            local_river_dist = get_distance_to_nearest_river_m(
-                source["lat"], source["lon"]
-            )
-            if local_river_dist is not None:
-                sat_data["distance_to_river_m"] = local_river_dist
+        local_river_dist = get_distance_to_nearest_river_m(source["lat"], source["lon"])
+        if local_river_dist is not None:
+            sat_data["distance_to_river_m"] = local_river_dist
 
-            # Calculate spring probability based on satellite data
-            spring_prob = calculate_spring_probability(
-                ndvi_dry=sat_data["ndvi_dry"],
-                ndvi_wet=sat_data["ndvi_wet"],
-                soil_moisture_summer=sat_data["soil_moisture_summer"],
-                jrc_occurrence=sat_data["jrc_occurrence"],
-                slope_degrees=sat_data["slope_degrees"],
-                elevation=sat_data.get("elevation", source.get("elevation", village_elevation)),
-                distance_to_river_m=sat_data["distance_to_river_m"],
-            )
-            
-            # EU-Hydro lake/reservoir sources are confirmed water bodies —
-            # the spring detector underscores them (it penalises high JRC values
-            # which indicate permanent water, not springs). Use a fixed high value.
-            if source.get("data_source") == "eu_hydro" and \
-               source.get("source_type") in ("lake", "reservoir"):
-                spring_prob["spring_probability"] = 0.85
+        spring_prob = calculate_spring_probability(
+            ndvi_dry=sat_data["ndvi_dry"],
+            ndvi_wet=sat_data["ndvi_wet"],
+            soil_moisture_summer=sat_data["soil_moisture_summer"],
+            jrc_occurrence=sat_data["jrc_occurrence"],
+            slope_degrees=sat_data["slope_degrees"],
+            elevation=sat_data["elevation"],
+            distance_to_river_m=sat_data["distance_to_river_m"],
+        )
 
-            # Store satellite data and spring analysis in source for frontend
-            source["satellite_data"] = sat_data
-            source["spring_analysis"] = spring_prob
-            source["spring_probability"] = spring_prob["spring_probability"]
-            source["gee_available"] = sat_data["available"]
-        except Exception as e:
-            log_analyzer.warning(f"Failed to fetch satellite data for {source.get('name')}: {e}")
-            # Use defaults and mark as unavailable
-            source["satellite_data"] = {
-                "ndvi_dry": 0.35,
-                "ndvi_wet": 0.50,
-                "soil_moisture_summer": 0.40,
-                "jrc_occurrence": 20.0,
-                "slope_degrees": 8.0,
-                "elevation": source.get("elevation", village_elevation),
-                "distance_to_river_m": 500.0,
-                "available": False,
-            }
-            source["spring_probability"] = 0.3
-            source["gee_available"] = False
+        # Confirmed EU-Hydro water bodies get a fixed high water-presence score
+        if source.get("data_source") == "eu_hydro" and \
+           source.get("source_type") in ("lake", "reservoir"):
+            spring_prob["spring_probability"] = 0.85
+
+        source["satellite_data"]   = sat_data
+        source["spring_analysis"]  = spring_prob
+        source["spring_probability"] = spring_prob["spring_probability"]
+        source["gee_available"]    = center_sat["available"]
 
     # 9. Rank by supply efficiency (now includes spring probability component)
     ranked = rank_water_sources(sources, village, weather)

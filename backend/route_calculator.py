@@ -3,28 +3,26 @@ Pipeline route calculation.
 
 Distance
 --------
-Primary:  OSRM public routing API (foot profile) — follows actual OpenStreetMap
-          paths, tracks, and trails through mountain terrain.  Returns real-world
-          route distance and the path geometry for map visualisation.
+Uses 3D straight-line distance — the physically correct model for a buried
+water pipeline that runs cross-terrain rather than following roads:
 
-Fallback: If OSRM is unreachable, times out, or returns an implausible route,
-          falls back to Haversine straight-line × TERRAIN_FACTOR (1.25).
+    3D distance = sqrt(horizontal_m² + elevation_diff_m²)
 
-The OSRM foot profile is used (not car) because mountain pipelines in the
-Carpathians follow hiking tracks and forest roads rather than paved roads.
+A terrain factor of 1.10 is then applied to account for the fact that
+terrain is never perfectly flat between two points (slight detours around
+gullies, rock outcrops, etc.).  This is intentionally conservative — pipelines
+do NOT follow roads, so road-routing APIs like OSRM are wrong here and
+systematically over-estimate by following winding valley roads.
+
+Visualisation
+-------------
+The route is drawn as a straight dashed line on the map, which is the
+standard cartographic convention for planned pipelines.
 """
 
-import logging
 import math
-import requests
 
-log = logging.getLogger("h2oolkit.route")
-
-EARTH_RADIUS_M  = 6_371_000.0
-TERRAIN_FACTOR  = 1.25          # straight-line fallback multiplier
-_OSRM_BASE      = "http://router.project-osrm.org/route/v1/foot"
-_OSRM_TIMEOUT_S = 6             # per-request timeout
-_OSRM_MAX_RATIO = 8.0           # if OSRM route > 8× straight-line, distrust it
+TERRAIN_FACTOR = 1.10   # 3D straight-line × this = installed pipe length
 
 
 def calculate_pipeline_route(
@@ -36,33 +34,23 @@ def calculate_pipeline_route(
     village_elevation: float,
 ) -> dict:
     """
-    Estimate pipeline route parameters between spring and village.
+    Estimate pipeline route parameters between a water source and a village.
 
-    Returns straight-line distance, routed distance (OSRM or fallback),
-    elevation delta, pipe sizing, and the route geometry as a list of
-    [lat, lon] pairs for frontend map rendering.
+    Returns straight-line and terrain-adjusted distances, elevation delta,
+    pipe sizing, feed type, and a straight-line geometry for map rendering.
     """
-    straight_m = haversine_m(spring_lat, spring_lon, village_lat, village_lon)
-
-    osrm = _fetch_osrm_route(spring_lat, spring_lon, village_lat, village_lon, straight_m)
-
-    if osrm:
-        routed_m      = osrm["distance_m"]
-        route_geometry = osrm["geometry"]   # [[lat, lon], ...]
-        routing_source = "osrm"
-    else:
-        routed_m      = straight_m * TERRAIN_FACTOR
-        # Geometry: straight line with 4 intermediate waypoints
-        route_geometry = _straight_waypoints(spring_lat, spring_lon, village_lat, village_lon)
-        routing_source = "straight_line_estimate"
-
-    routed_km = routed_m / 1_000.0
-
+    horizontal_m     = haversine_m(spring_lat, spring_lon, village_lat, village_lon)
     elevation_diff_m = spring_elevation - village_elevation   # positive = gravity feed
-    slope_pct = abs(elevation_diff_m) / max(straight_m, 1) * 100
+    abs_elev         = abs(elevation_diff_m)
 
-    gravity_feed = elevation_diff_m > 0
-    feed_type    = "gravity" if gravity_feed else "pumped"
+    # True 3D pipe length: diagonal through terrain
+    distance_3d_m  = math.sqrt(horizontal_m ** 2 + abs_elev ** 2)
+    routed_m       = distance_3d_m * TERRAIN_FACTOR
+    routed_km      = routed_m / 1_000.0
+
+    slope_pct      = abs_elev / max(horizontal_m, 1) * 100
+    gravity_feed   = elevation_diff_m > 0
+    feed_type      = "gravity" if gravity_feed else "pumped"
 
     if routed_km <= 1.0:
         pipe_diameter_mm = 63
@@ -73,99 +61,48 @@ def calculate_pipeline_route(
 
     pressure_class = "PN10" if slope_pct < 5 else "PN16"
 
+    # Straight-line geometry for the map (pipelines are drawn as straight lines)
+    geometry = _straight_waypoints(spring_lat, spring_lon, village_lat, village_lon)
+
     return {
-        "straight_line_distance_m":      round(straight_m, 1),
-        "terrain_adjusted_distance_m":   round(routed_m, 1),
-        "terrain_adjusted_distance_km":  round(routed_km, 3),
-        "elevation_difference_m":        round(elevation_diff_m, 1),
-        "slope_pct":                     round(slope_pct, 2),
-        "feed_type":                     feed_type,
-        "pipe_diameter_mm":              pipe_diameter_mm,
-        "pressure_class":                pressure_class,
-        "terrain_factor":                round(routed_m / max(straight_m, 1), 3),
-        "routing_source":                routing_source,
-        "route_geometry":                route_geometry,
-        # kept for backward compatibility
-        "waypoints":                     route_geometry,
-        "confidence":                    0.85 if osrm else 0.60,
-        "recommendation":                _recommendation(routed_km, elevation_diff_m, slope_pct, gravity_feed),
+        "straight_line_distance_m":     round(horizontal_m, 1),
+        "terrain_adjusted_distance_m":  round(routed_m, 1),
+        "terrain_adjusted_distance_km": round(routed_km, 3),
+        "elevation_difference_m":       round(elevation_diff_m, 1),
+        "slope_pct":                    round(slope_pct, 2),
+        "feed_type":                    feed_type,
+        "pipe_diameter_mm":             pipe_diameter_mm,
+        "pressure_class":               pressure_class,
+        "terrain_factor":               TERRAIN_FACTOR,
+        "routing_source":               "3d_straight_line",
+        "route_geometry":               geometry,
+        "waypoints":                    geometry,   # backward compat
+        "confidence":                   0.75,
+        "recommendation":               _recommendation(
+            routed_km, elevation_diff_m, slope_pct, gravity_feed
+        ),
     }
 
 
-# ── OSRM integration ──────────────────────────────────────────────────────────
-
-def _fetch_osrm_route(
-    lat1: float, lon1: float,
-    lat2: float, lon2: float,
-    straight_m: float,
-) -> dict | None:
-    """
-    Call the OSRM public routing API (foot profile).
-
-    Returns {"distance_m": float, "geometry": [[lat, lon], ...]} or None on failure.
-    Geometry points are in [lat, lon] order (Leaflet-ready).
-    """
-    url = f"{_OSRM_BASE}/{lon1},{lat1};{lon2},{lat2}"
-    params = {"overview": "full", "geometries": "geojson"}
-
-    try:
-        resp = requests.get(url, params=params, timeout=_OSRM_TIMEOUT_S)
-        resp.raise_for_status()
-        data = resp.json()
-
-        if data.get("code") != "Ok" or not data.get("routes"):
-            log.debug("OSRM returned no route for %.4f,%.4f → %.4f,%.4f", lat1, lon1, lat2, lon2)
-            return None
-
-        route     = data["routes"][0]
-        distance_m = float(route["distance"])
-
-        # Sanity check: if OSRM route is unrealistically long, discard it
-        if straight_m > 0 and distance_m / straight_m > _OSRM_MAX_RATIO:
-            log.warning(
-                "OSRM route %.0f m is %.1f× straight-line — discarding",
-                distance_m, distance_m / straight_m,
-            )
-            return None
-
-        # GeoJSON coordinates are [lon, lat]; flip to [lat, lon] for Leaflet
-        coords = route["geometry"]["coordinates"]
-        geometry = [[pt[1], pt[0]] for pt in coords]
-
-        log.debug(
-            "OSRM route: %.0f m (%d points) vs straight-line %.0f m",
-            distance_m, len(geometry), straight_m,
-        )
-        return {"distance_m": distance_m, "geometry": geometry}
-
-    except requests.Timeout:
-        log.warning("OSRM timed out for %.4f,%.4f → %.4f,%.4f", lat1, lon1, lat2, lon2)
-    except Exception as exc:
-        log.warning("OSRM request failed: %s", exc)
-
-    return None
-
-
-# ── Helpers ───────────────────────────────────────────────────────────────────
-
 def haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """Great-circle distance in metres between two WGS-84 points."""
+    R = 6_371_000.0
     phi1, phi2 = math.radians(lat1), math.radians(lat2)
     dphi = math.radians(lat2 - lat1)
     dlam = math.radians(lon2 - lon1)
     a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlam / 2) ** 2
-    return EARTH_RADIUS_M * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
 
 def _straight_waypoints(
     lat1: float, lon1: float,
     lat2: float, lon2: float,
-    n_intermediate: int = 4,
+    n: int = 4,
 ) -> list:
-    """Fallback geometry: straight line with intermediate points."""
+    """Straight-line geometry with n evenly-spaced intermediate points."""
     points = [[lat1, lon1]]
-    for i in range(1, n_intermediate + 1):
-        frac = i / (n_intermediate + 1)
+    for i in range(1, n + 1):
+        frac = i / (n + 1)
         points.append([
             round(lat1 + (lat2 - lat1) * frac, 6),
             round(lon1 + (lon2 - lon1) * frac, 6),
@@ -178,7 +115,6 @@ def _recommendation(
     dist_km: float, elev_diff_m: float, slope_pct: float, gravity: bool
 ) -> str:
     parts = []
-
     if dist_km < 1:
         parts.append(f"Short route ({dist_km:.2f} km) — low pipeline cost.")
     elif dist_km < 5:
@@ -187,13 +123,17 @@ def _recommendation(
         parts.append(f"Long route ({dist_km:.1f} km) — significant pipeline investment required.")
 
     if gravity:
-        parts.append(f"Gravity-fed (spring is {elev_diff_m:.0f} m above village) — no pumping needed.")
+        parts.append(
+            f"Gravity-fed ({elev_diff_m:.0f} m above village) — no pumping needed."
+        )
     else:
         parts.append(
-            f"Spring is {abs(elev_diff_m):.0f} m below village — pumping station required."
+            f"{abs(elev_diff_m):.0f} m below village — pumping station required."
         )
 
     if slope_pct > 15:
-        parts.append("Steep terrain may require pressure-reducing valves and anchored pipe sections.")
+        parts.append(
+            "Steep terrain — pressure-reducing valves and anchored pipe sections required."
+        )
 
     return " ".join(parts)
